@@ -1,0 +1,230 @@
+version: '3.8'
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    container_name: payrollpro-postgres
+    environment:
+      POSTGRES_DB: payrollpro
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: payrollpro-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: payrollpro-auth-service
+    ports:
+      - "3010:3010"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
+      interval: 30s
+  employee-service:
+    build:
+      context: .
+      dockerfile: apps/employee-service/Dockerfile
+    container_name: payrollpro-employee-service
+    ports:
+      - "3011:3011"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  attendance-service:
+    build:
+      context: .
+      dockerfile: apps/attendance-service/Dockerfile
+    container_name: payrollpro-attendance-service
+    ports:
+      - "3013:3013"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3013/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  leave-service:
+    build:
+      context: .
+      dockerfile: apps/leave-service/Dockerfile
+    container_name: payrollpro-leave-service
+    ports:
+      - "3014:3014"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3014/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  payroll-service:
+    build:
+      context: .
+      dockerfile: apps/payroll-service/Dockerfile
+    container_name: payrollpro-payroll-service
+    ports:
+      - "3012:3012"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3012/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  shift-service:
+    build:
+      context: .
+      dockerfile: apps/shift-service/Dockerfile
+    container_name: payrollpro-shift-service
+    ports:
+      - "3016:3016"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3016/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  social-service:
+    build:
+      context: .
+      dockerfile: apps/social-service/Dockerfile
+    container_name: payrollpro-social-service
+    ports:
+      - "3015:3015"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - REDIS_URL=redis://redis:6379
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - social_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  websocket:
+    build:
+      context: .
+      dockerfile: apps/websocket/Dockerfile
+    container_name: payrollpro-websocket
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: payrollpro-api-gateway
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - CORS_ORIGIN=http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - AUTH_SERVICE_URL=http://auth-service:3010
+      - EMPLOYEE_SERVICE_URL=http://employee-service:3011
+      - PAYROLL_SERVICE_URL=http://payroll-service:3012
+      - ATTENDANCE_SERVICE_URL=http://attendance-service:3013
+      - LEAVE_SERVICE_URL=http://leave-service:3014
+      - SOCIAL_SERVICE_URL=http://social-service:3015
+      - SHIFT_SERVICE_URL=http://shift-service:3016
+    depends_on:
+      - auth-service
+      - employee-service
+      - payroll-service
+      - attendance-service
+      - leave-service
+      - social-service
+      - shift-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  social_uploads:

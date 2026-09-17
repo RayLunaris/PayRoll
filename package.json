@@ -1,0 +1,29 @@
+{
+  "name": "payrollpro",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @payrollpro/web dev",
+    "dev:gateway": "pnpm --filter @payrollpro/api-gateway dev",
+    "dev:auth": "pnpm --filter @payrollpro/auth-service dev",
+    "dev:employee": "pnpm --filter @payrollpro/employee-service dev",
+    "dev:payroll": "pnpm --filter @payrollpro/payroll-service dev",
+    "dev:attendance": "pnpm --filter @payrollpro/attendance-service dev",
+    "dev:leave": "pnpm --filter @payrollpro/leave-service dev",
+    "dev:social": "pnpm --filter @payrollpro/social-service dev",
+    "dev:shift": "pnpm --filter @payrollpro/shift-service dev",
+    "dev:ws": "pnpm --filter @payrollpro/websocket dev",
+    "dev:all": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "db:generate": "pnpm --filter @payrollpro/db generate",
+    "db:migrate": "pnpm --filter @payrollpro/db migrate",
+    "db:seed": "pnpm --filter @payrollpro/db seed",
+    "db:studio": "pnpm --filter @payrollpro/db studio",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
