@@ -8,8 +8,8 @@ interface MapViewProps {
   workLocations: Array<{
     id: string;
     name: string;
-    latitude: number;
-    longitude: number;
+    latitude: number | string;
+    longitude: number | string;
     radiusMeters: number;
   }>;
 }
@@ -27,46 +27,63 @@ function MapViewInner({ userLocation, workLocations }: MapViewProps) {
 
       const L = (await import('leaflet')).default;
 
-      const map = L.map(mapRef.current).setView([-6.2088, 106.8456], 13);
+      const defaultCenter: [number, number] = userLocation
+        ? [userLocation.lat, userLocation.lng]
+        : [-6.2088, 106.8456];
+
+      const map = L.map(mapRef.current).setView(defaultCenter, userLocation ? 15 : 13);
       mapInstanceRef.current = map;
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
       }).addTo(map);
 
+      // Custom office icon to avoid broken image asset in Next.js Leaflet bundling
+      const officeIcon = L.divIcon({
+        className: 'office-pin-icon',
+        html: `<div style="background-color: #2563eb; color: white; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.25);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+        </div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+
       workLocations.forEach((loc) => {
-        L.circle([loc.latitude, loc.longitude], {
-          radius: loc.radiusMeters,
+        const lat = typeof loc.latitude === 'string' ? parseFloat(loc.latitude) : loc.latitude;
+        const lng = typeof loc.longitude === 'string' ? parseFloat(loc.longitude) : loc.longitude;
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return;
+
+        L.circle([lat, lng], {
+          radius: Number(loc.radiusMeters) || 100,
           color: '#3b82f6',
           fillColor: '#3b82f6',
-          fillOpacity: 0.1,
+          fillOpacity: 0.12,
           weight: 2,
         })
           .addTo(map)
-          .bindPopup(`${loc.name} (radius ${loc.radiusMeters}m)`);
+          .bindPopup(`<strong>${loc.name}</strong><br/>Radius: ${loc.radiusMeters}m`);
 
-        L.marker([loc.latitude, loc.longitude]).addTo(map).bindPopup(loc.name);
+        L.marker([lat, lng], { icon: officeIcon })
+          .addTo(map)
+          .bindPopup(`<strong>${loc.name}</strong>`);
       });
 
       if (userLocation) {
-        L.marker([userLocation.lat, userLocation.lng], {
-          icon: L.divIcon({
-            className: 'custom-div-icon',
-            html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 3px rgba(239,68,68,0.3);"></div>',
-            iconSize: [16, 16],
-          }),
-        })
-          .addTo(map)
-          .bindPopup('Lokasi Anda');
+        const userIcon = L.divIcon({
+          className: 'user-pin-icon',
+          html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 4px rgba(239,68,68,0.35);"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        });
 
-        map.setView([userLocation.lat, userLocation.lng], 15);
+        L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
+          .addTo(map)
+          .bindPopup('<strong>Lokasi Anda</strong>');
       }
     };
 
     if (isMounted) {
-      import('leaflet/dist/leaflet.css').then(() => {
-        initMap();
-      });
+      initMap();
     }
 
     return () => {

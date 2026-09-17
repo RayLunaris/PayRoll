@@ -15,8 +15,8 @@ import {
 interface WorkLocation {
   id: string;
   name: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | string;
+  longitude: number | string;
   radiusMeters: number;
 }
 

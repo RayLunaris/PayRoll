@@ -730,14 +730,14 @@ EOF
 
 ## Verification Checklist
 
-- [ ] GPS location capture berfungsi
-- [ ] Map menampilkan lokasi kerja
-- [ ] Check-in menampilkan status
-- [ ] Check-out berfungsi
-- [ ] History table menampilkan data
-- [ ] Filter tanggal bekerja
-- [ ] Report page hanya HR/Manager yang bisa akses
-- [ ] Error handling GPS ditampilkan
+- [x] GPS location capture berfungsi
+- [x] Map menampilkan lokasi kerja
+- [x] Check-in menampilkan status
+- [x] Check-out berfungsi
+- [x] History table menampilkan data
+- [x] Filter tanggal bekerja
+- [x] Report page hanya HR/Manager yang bisa akses
+- [x] Error handling GPS ditampilkan
 
 ---
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
@@ -17,6 +17,13 @@ interface ReportRow {
   totalOvertime: number;
 }
 
+interface EmployeeItem {
+  id: string;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+}
+
 const ALLOWED_ROLES = ['hr_admin', 'manager', 'super_admin'] as const;
 
 export default function AttendanceReportPage() {
@@ -27,6 +34,7 @@ export default function AttendanceReportPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [report, setReport] = useState<ReportRow[]>([]);
+  const [employeeMap, setEmployeeMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
 
@@ -37,7 +45,23 @@ export default function AttendanceReportPage() {
     }
   }, [user, router]);
 
-  const fetchReport = async () => {
+  // Fetch employee directory for mapping employeeId to full name
+  useEffect(() => {
+    api
+      .get<{ data: EmployeeItem[] }>('/employees')
+      .then((res) => {
+        const map: Record<string, string> = {};
+        res.data.data.forEach((emp) => {
+          map[emp.id] = `${emp.firstName} ${emp.lastName} (${emp.employeeNumber})`;
+        });
+        setEmployeeMap(map);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch employees list for mapping:', err);
+      });
+  }, []);
+
+  const fetchReport = useCallback(async () => {
     setLoading(true);
     setFetchError('');
     try {
@@ -51,11 +75,53 @@ export default function AttendanceReportPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [month, year]);
+
+  // Load initial report on page mount asynchronously
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      fetchReport();
+    });
+  }, [fetchReport]);
 
   const handleExport = () => {
-    // TODO: implement CSV/Excel export
-    alert('Fitur export akan segera tersedia.');
+    if (report.length === 0) {
+      alert('Tidak ada data untuk diekspor. Silakan tampilkan laporan terlebih dahulu.');
+      return;
+    }
+
+    const headers = [
+      'Karyawan',
+      'ID Karyawan',
+      'Total Hari',
+      'Hadir',
+      'Terlambat',
+      'Absen',
+      'Total Lembur (Jam)',
+    ];
+    const rows = report.map((r) => [
+      `"${(employeeMap[r.employeeId] || r.employeeName || 'Karyawan').replace(/"/g, '""')}"`,
+      `"${r.employeeId}"`,
+      r.totalDays,
+      r.presentDays,
+      r.lateDays,
+      r.absentDays,
+      r.totalOvertime ?? 0,
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute(
+      'download',
+      `laporan-kehadiran-${year}-${String(month).padStart(2, '0')}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const currentYear = now.getFullYear();
@@ -72,7 +138,7 @@ export default function AttendanceReportPage() {
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn btn-secondary">
             <Download className="h-4 w-4 mr-1" />
-            Export
+            Export CSV
           </button>
         </div>
       </div>
@@ -143,7 +209,7 @@ export default function AttendanceReportPage() {
                 {report.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-8 text-gray-500">
-                      Belum ada data untuk periode ini. Klik &ldquo;Tampilkan&rdquo; untuk memuat laporan.
+                      Belum ada data untuk periode ini.
                     </td>
                   </tr>
                 ) : (
@@ -152,7 +218,7 @@ export default function AttendanceReportPage() {
                       <td>
                         <div className="flex items-center gap-2">
                           <UserCircle className="h-4 w-4 text-gray-400 shrink-0" />
-                          <span>{row.employeeName ?? row.employeeId}</span>
+                          <span>{employeeMap[row.employeeId] ?? row.employeeName ?? row.employeeId}</span>
                         </div>
                       </td>
                       <td>{row.totalDays}</td>
