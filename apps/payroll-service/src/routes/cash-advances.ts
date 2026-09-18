@@ -95,7 +95,7 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
       }
 
       if (employee.length === 0) {
-        return reply.status(404).send({ success: false, error: 'Employee not found' });
+        return reply.send({ success: true, data: [] });
       }
 
       const data = await db.select().from(cashAdvances)

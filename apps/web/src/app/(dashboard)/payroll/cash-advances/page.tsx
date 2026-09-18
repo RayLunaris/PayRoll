@@ -112,9 +112,13 @@ export default function CashAdvancesPage() {
         '/cash-advances/history',
       );
       setAdvances(response.data.data || []);
-    } catch (err: unknown) {
-      console.error('Failed to fetch cash advances:', err);
-      setError('Gagal memuat data kasbon. Silakan coba lagi.');
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        setAdvances([]);
+      } else {
+        console.error('Failed to fetch cash advances:', err);
+        setError('Gagal memuat data kasbon. Silakan coba lagi.');
+      }
     } finally {
       setLoading(false);
     }

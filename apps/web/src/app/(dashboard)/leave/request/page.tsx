@@ -99,8 +99,10 @@ export default function LeaveRequestPage() {
         });
         setQuotaMap(map);
       }
-    } catch (err) {
-      console.error('Failed to fetch quota:', err);
+    } catch (err: any) {
+      if (err?.response?.status !== 404) {
+        console.error('Failed to fetch quota:', err);
+      }
     }
   }, []);
 

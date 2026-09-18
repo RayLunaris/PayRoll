@@ -82,7 +82,7 @@ export async function payrollRoutes(app: FastifyInstance) {
       if (user.role === 'employee') {
         const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0) {
-          return reply.status(404).send({ success: false, error: 'Employee not found' });
+          return reply.send({ success: true, data: [] });
         }
         targetEmployeeId = emp[0].id;
       }

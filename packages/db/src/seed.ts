@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { users, departments, positions, workLocations, shifts, bpjsConfig, taxConfig, overtimeRates } from './schema';
+import { eq } from 'drizzle-orm';
+import { users, employees, departments, positions, workLocations, shifts, bpjsConfig, taxConfig, overtimeRates } from './schema';
 import { hash } from 'bcrypt';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres123@localhost:5432/payrollpro';
@@ -74,6 +75,31 @@ async function seed() {
       radiusMeters: 100,
     },
   ]);
+
+  // Seed Default Employee Profile for Super Admin
+  const [adminUser] = await db.select().from(users).where(eq(users.email, 'admin@payrollpro.com')).limit(1);
+  const [hrDept] = await db.select().from(departments).where(eq(departments.name, 'Human Resources')).limit(1);
+  const [managerPos] = await db.select().from(positions).where(eq(positions.name, 'Manager')).limit(1);
+  const [headOffice] = await db.select().from(workLocations).where(eq(workLocations.name, 'Head Office')).limit(1);
+
+  if (adminUser && hrDept && managerPos && headOffice) {
+    const existingEmp = await db.select().from(employees).where(eq(employees.userId, adminUser.id)).limit(1);
+    if (existingEmp.length === 0) {
+      const [adminEmp] = await db.insert(employees).values({
+        userId: adminUser.id,
+        nip: 'EMP001',
+        fullName: 'Administrator',
+        departmentId: hrDept.id,
+        positionId: managerPos.id,
+        locationId: headOffice.id,
+        joinDate: '2024-01-01',
+        baseSalary: '15000000',
+        isActive: true,
+      }).returning();
+
+      await db.update(users).set({ employeeId: adminEmp.id }).where(eq(users.id, adminUser.id));
+    }
+  }
 
   // Seed Shifts
   await db.insert(shifts).values([
