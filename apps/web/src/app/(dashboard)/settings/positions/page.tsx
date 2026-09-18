@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useAuthStore } from '@/stores/auth';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/error';
 import { formatRupiah } from '@/lib/csv';
 import {
   Briefcase,
@@ -68,7 +69,11 @@ export default function PositionsPage() {
   }, []);
 
   useEffect(() => {
-    void fetchPositions();
+    // Deferred so state updates are not synchronous with the effect body.
+    const timer = window.setTimeout(() => {
+      void fetchPositions();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchPositions]);
 
   const openAddModal = () => {
@@ -114,9 +119,9 @@ export default function PositionsPage() {
 
       setShowModal(false);
       await fetchPositions();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to save position:', err);
-      setFormError(err?.response?.data?.error || err?.response?.data?.message || 'Gagal menyimpan data jabatan.');
+      setFormError(getApiErrorMessage(err, 'Gagal menyimpan data jabatan.'));
     } finally {
       setSubmitting(false);
     }
@@ -128,9 +133,9 @@ export default function PositionsPage() {
     try {
       await api.delete(`/positions/${id}`);
       await fetchPositions();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to delete position:', err);
-      alert(err?.response?.data?.error || 'Gagal menghapus jabatan.');
+      alert(getApiErrorMessage(err, 'Gagal menghapus jabatan.'));
     } finally {
       setDeletingId(null);
     }

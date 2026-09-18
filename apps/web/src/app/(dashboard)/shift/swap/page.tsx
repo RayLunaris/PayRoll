@@ -5,6 +5,7 @@ import Breadcrumb from '@/components/layout/Breadcrumb';
 import ShiftTabs from '@/components/shift/ShiftTabs';
 import { useAuthStore } from '@/stores/auth';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/error';
 import {
   ArrowLeftRight,
   Plus,
@@ -91,7 +92,11 @@ export default function ShiftSwapPage() {
   }, [direction]);
 
   useEffect(() => {
-    void fetchSwapsAndEmployees();
+    // Deferred so state updates are not synchronous with the effect body.
+    const timer = window.setTimeout(() => {
+      void fetchSwapsAndEmployees();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchSwapsAndEmployees]);
 
   const handleSubmitSwap = async (e: React.FormEvent) => {
@@ -111,9 +116,9 @@ export default function ShiftSwapPage() {
       setTargetEmployeeId('');
       setSwapDate('');
       await fetchSwapsAndEmployees();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to submit swap:', err);
-      setFormError(err?.response?.data?.error || err?.response?.data?.message || 'Gagal mengajukan tukar shift.');
+      setFormError(getApiErrorMessage(err, 'Gagal mengajukan tukar shift.'));
     } finally {
       setSubmitting(false);
     }
@@ -126,9 +131,9 @@ export default function ShiftSwapPage() {
         approved,
       });
       await fetchSwapsAndEmployees();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to update swap status:', err);
-      alert(err?.response?.data?.error || 'Gagal memproses persetujuan tukar shift.');
+      alert(getApiErrorMessage(err, 'Gagal memproses persetujuan tukar shift.'));
     } finally {
       setProcessingId(null);
     }

@@ -1,0 +1,22 @@
+import { chromium } from '@playwright/test'
+const browser = await chromium.launch()
+const ctx = await browser.newContext()
+const page = await ctx.newPage()
+const reqs=[]; const resps=[]
+page.on('request', r => reqs.push(`${r.method()} ${new URL(r.url()).pathname}`))
+page.on('response', r => resps.push(`${r.status()} ${new URL(r.url()).pathname}`))
+page.on('console', m => { const t=m.text(); if(/refresh|Session|error|401/i.test(t)) console.log('[console]', t.slice(0,130)) })
+await page.goto('http://localhost:3000/login')
+await page.fill('input[type=email]','admin@payrollpro.com')
+await page.fill('input[type=password]','admin123')
+await page.click('button[type=submit]')
+await page.waitForURL(/dashboard/,{timeout:25000})
+reqs.length=0; resps.length=0
+console.log('=== hard reload to /employees (counting ALL reqs) ===')
+await page.goto('http://localhost:3000/employees',{timeout:50000})
+await page.waitForTimeout(4000)
+console.log('--- ALL requests this load:')
+console.log([...new Set(reqs)].join('\n'))
+console.log('--- ALL responses this load:')
+console.log([...new Set(resps)].join('\n'))
+await browser.close()

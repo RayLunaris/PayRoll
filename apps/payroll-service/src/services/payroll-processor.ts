@@ -79,16 +79,19 @@ export async function processEmployeePayroll(
 
   const totalCashAdvance = advances.reduce((sum, a) => sum + parseFloat(a.amount || '0'), 0);
 
-  // Calculate Net Salary
+  // Calculate Net Salary (never negative)
   const otherDeductions = 0;
-  const netSalary = Math.round(
-    baseSalary +
-    overtime.overtimePay +
-    allowances -
-    bpjs.totalEmployee -
-    tax.monthlyTax -
-    totalCashAdvance -
-    otherDeductions
+  const netSalary = Math.max(
+    0,
+    Math.round(
+      baseSalary +
+      overtime.overtimePay +
+      allowances -
+      bpjs.totalEmployee -
+      tax.monthlyTax -
+      totalCashAdvance -
+      otherDeductions
+    )
   );
 
   // Check if payroll already exists for this period

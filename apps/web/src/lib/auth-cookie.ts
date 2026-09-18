@@ -1,19 +1,30 @@
-export const ACCESS_TOKEN_COOKIE = 'accessToken'
-export const USER_ROLE_COOKIE = 'userRole'
+export const ACCESS_TOKEN_COOKIE = 'prp_access'
+export const REFRESH_TOKEN_COOKIE = 'prp_refresh'
+export const USER_ROLE_COOKIE = 'prp_role'
 
-export function setAuthCookies(accessToken: string, role?: string) {
-  if (typeof document === 'undefined') return
-
-  document.cookie = `${ACCESS_TOKEN_COOKIE}=${accessToken}; path=/; samesite=lax`
-  if (role) {
-    document.cookie = `${USER_ROLE_COOKIE}=${role}; path=/; samesite=lax`
+// Tokens are persisted in HttpOnly cookies via a same-origin route handler so
+// JavaScript (and therefore XSS) can never read the raw refresh token.
+export async function persistServerSession(
+  accessToken: string,
+  refreshToken: string,
+  role?: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken, refreshToken, role }),
+    })
+    return res.ok
+  } catch {
+    return false
   }
 }
 
-export function clearAuthCookies() {
-  if (typeof document === 'undefined') return
-
-  const expiry = 'expires=Thu, 01 Jan 1970 00:00:00 GMT'
-  document.cookie = `${ACCESS_TOKEN_COOKIE}=; ${expiry}; path=/`
-  document.cookie = `${USER_ROLE_COOKIE}=; ${expiry}; path=/`
+export async function clearServerSession(): Promise<void> {
+  try {
+    await fetch('/api/auth/session', { method: 'DELETE' })
+  } catch {
+    // Best-effort: in-memory state is cleared regardless.
+  }
 }

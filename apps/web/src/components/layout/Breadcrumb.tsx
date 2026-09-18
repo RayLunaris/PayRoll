@@ -36,7 +36,8 @@ const routeLabels: Record<string, string> = {
   messages: 'Pesan',
   forum: 'Forum',
   announcements: 'Pengumuman',
-}
+  notifications: 'Notifikasi',
+};
 
 export default function Breadcrumb() {
   const pathname = usePathname()

@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import api from '@/lib/api'
 import type { User } from '@/types'
-import { clearAuthCookies, setAuthCookies } from '@/lib/auth-cookie'
+import { clearServerSession, persistServerSession } from '@/lib/auth-cookie'
+import { refreshServerSession } from '@/lib/session'
 
 interface AuthState {
   user: User | null
@@ -12,6 +12,7 @@ interface AuthState {
   isLoading: boolean
   error: string | null
   hasHydrated: boolean
+  restoreAttempted: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   fetchMe: () => Promise<void>
@@ -19,108 +20,119 @@ interface AuthState {
   clearError: () => void
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  user: null,
+  accessToken: null,
+  refreshToken: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null,
+  hasHydrated: true,
+  restoreAttempted: false,
+
+  login: async (email: string, password: string) => {
+    set({ isLoading: true, error: null })
+    try {
+      const { data } = await api.post('/auth/login', { email, password })
+      const { user, accessToken, refreshToken } = data.data
+      set({
+        user,
+        accessToken,
+        refreshToken,
+        isAuthenticated: true,
+        isLoading: false,
+        restoreAttempted: true,
+      })
+      await persistServerSession(accessToken, refreshToken, user?.role)
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+            'Login failed'
+      set({ error: message, isLoading: false })
+      throw err
+    }
+  },
+
+  logout: async () => {
+    const { accessToken, refreshToken } = get()
+
+    if (accessToken && refreshToken) {
+      try {
+        await api.post('/auth/logout', { refreshToken })
+      } catch {
+        // Best-effort revoke: state is cleared regardless of server result.
+      }
+    }
+
+    set({
       user: null,
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
-      isLoading: false,
       error: null,
-      hasHydrated: false,
+      isLoading: false,
+    })
+    await clearServerSession()
+  },
 
-      login: async (email: string, password: string) => {
-        set({ isLoading: true, error: null })
-        try {
-          const { data } = await api.post('/auth/login', { email, password })
-          const { user, accessToken, refreshToken } = data.data
-          set({
-            user,
-            accessToken,
-            refreshToken,
-            isAuthenticated: true,
-            isLoading: false,
-          })
-          setAuthCookies(accessToken, user?.role)
-        } catch (err: unknown) {
-          const message =
-            err instanceof Error
-              ? err.message
-              : (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-                'Login failed'
-          set({ error: message, isLoading: false })
-          throw err
-        }
-      },
+  fetchMe: async () => {
+    // Set loading synchronously BEFORE the (possibly awaited) session-restore:
+    // useRequireAuth()/useRequireRole() guards gate on `isLoading` and must not
+    // fire their router.replace('/login') on the first paint while the HttpOnly
+    // refresh-token restore is still rotating. Otherwise a hard reload of any
+    // dashboard page races the guard redirect against fetchMe() and always
+    // lands on /login despite a successful refresh + /auth/me 200.
+    set({ isLoading: true })
 
-      logout: async () => {
-        const { accessToken, refreshToken } = get()
+    let { accessToken } = get()
 
-        if (accessToken && refreshToken) {
-          try {
-            await api.post('/auth/logout', { refreshToken })
-          } catch {
-            // Best-effort revoke: state is cleared regardless of server result.
-          }
-        }
+    if (!accessToken) {
+      if (get().restoreAttempted) return
+      // Restore session from HttpOnly refresh-token cookie on hard reload.
+      // Route through the SAME single-flight coordinator used by the axios
+      // 401-interceptor (lib/session.ts) so fetchMe() and interceptor-triggered
+      // refreshes can never rotate the refresh token twice in parallel — the
+      // auth-service rotates+revokes on every /auth/refresh, leaving the loser
+      // of a concurrent race with a revoked cookie and a 401 "Session refresh
+      // failed" that breaks every dashboard fetch on cold page loads.
+      let restored: { accessToken: string; refreshToken: string }
+      try {
+        restored = await refreshServerSession()
+      } catch {
+        set({ restoreAttempted: true })
+        get().logout()
+        return
+      }
+      set({
+        accessToken: restored.accessToken,
+        refreshToken: restored.refreshToken,
+        isAuthenticated: true,
+        restoreAttempted: true,
+      })
+      accessToken = restored.accessToken
+    }
 
-        set({
-          user: null,
-          accessToken: null,
-          refreshToken: null,
-          isAuthenticated: false,
-          error: null,
-        })
-        clearAuthCookies()
-      },
+    set({ isLoading: true })
+    try {
+      const { data } = await api.get('/auth/me')
+      set({ user: data.data, isAuthenticated: true, isLoading: false })
+    } catch {
+      set({ isLoading: false })
+      get().logout()
+    }
+  },
 
-      fetchMe: async () => {
-        const { accessToken } = get()
-        if (!accessToken) return
+  setTokens: (accessToken: string, refreshToken: string) => {
+    set({
+      accessToken,
+      refreshToken,
+      isAuthenticated: true,
+      restoreAttempted: true,
+    })
+    void persistServerSession(accessToken, refreshToken, get().user?.role)
+  },
 
-        set({ isLoading: true })
-        try {
-          const { data } = await api.get('/auth/me')
-          set({ user: data.data, isAuthenticated: true, isLoading: false })
-        } catch {
-          set({ isLoading: false })
-          get().logout()
-        }
-      },
-
-      setTokens: (accessToken: string, refreshToken: string) => {
-        set({ accessToken, refreshToken, isAuthenticated: true })
-        setAuthCookies(accessToken, get().user?.role)
-      },
-
-      clearError: () => set({ error: null }),
-    }),
-    {
-      name: 'payrollpro-auth',
-      partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-        isAuthenticated: state.isAuthenticated,
-      }),
-      merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<AuthState>
-        const hasTokens = Boolean(p.accessToken)
-        return {
-          ...current,
-          ...p,
-          isAuthenticated: hasTokens,
-          hasHydrated: true,
-        }
-      },
-      onRehydrateStorage: () => (state) => {
-        if (state?.accessToken) {
-          setAuthCookies(state.accessToken, state.user?.role)
-        } else {
-          clearAuthCookies()
-        }
-      },
-    },
-  ),
-)
+  clearError: () => set({ error: null }),
+}))

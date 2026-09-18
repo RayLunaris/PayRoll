@@ -1,8 +1,11 @@
 import Redis from 'ioredis';
 import crypto from 'crypto';
 
-// In-memory fallback map if Redis is not reachable
-const memStore = new Map<string, number>();
+// In-memory fallback: tokens are ALWAYS mirrored here so behavior stays
+// consistent even when Redis flips between available and unavailable.
+const memStore = new Map<string, number>(); // key -> expiry (ms epoch)
+const userIndex = new Map<string, Set<string>>(); // userId -> set of memStore keys
+const MAX_MEM_ENTRIES = 10_000;
 
 let redisClient: Redis | null = null;
 let redisAvailable = false;
@@ -32,37 +35,89 @@ try {
   redisAvailable = false;
 }
 
+// Evict expired + oldest entries so the in-memory store stays bounded.
+function pruneMemStore(now: number) {
+  for (const [key, expiry] of memStore.entries()) {
+    if (expiry <= now) {
+      memStore.delete(key);
+      const sep = key.indexOf(':');
+      const uid = sep > -1 ? key.slice(sep + 1, key.indexOf(':', sep + 1)) : '';
+      const userKeys = uid ? userIndex.get(uid) : undefined;
+      if (userKeys) {
+        userKeys.delete(key);
+        if (userKeys.size === 0) userIndex.delete(uid);
+      }
+    }
+  }
+  if (memStore.size >= MAX_MEM_ENTRIES) {
+    const overflow = memStore.size - MAX_MEM_ENTRIES + 1;
+    const it = memStore.keys();
+    for (let i = 0; i < overflow; i++) {
+      const oldestKey = it.next().value as string | undefined;
+      if (!oldestKey) break;
+      memStore.delete(oldestKey);
+      const sep = oldestKey.indexOf(':');
+      const uid = sep > -1 ? oldestKey.slice(sep + 1, oldestKey.indexOf(':', sep + 1)) : '';
+      const userKeys = uid ? userIndex.get(uid) : undefined;
+      if (userKeys) {
+        userKeys.delete(oldestKey);
+        if (userKeys.size === 0) userIndex.delete(uid);
+      }
+    }
+  }
+}
+
+function memSet(key: string, ttlSeconds: number) {
+  const now = Date.now();
+  pruneMemStore(now);
+  memStore.set(key, now + ttlSeconds * 1000);
+
+  const sep = key.indexOf(':');
+  if (sep > -1) {
+    const uid = key.slice(sep + 1, key.indexOf(':', sep + 1));
+    if (uid) {
+      if (!userIndex.has(uid)) userIndex.set(uid, new Set());
+      userIndex.get(uid)!.add(key);
+    }
+  }
+}
+
 export function generateJti(): string {
   return crypto.randomUUID();
 }
 
 export async function storeRefreshToken(userId: string, jti: string, ttlSeconds: number = 7 * 24 * 3600): Promise<void> {
   const key = `rt:${userId}:${jti}`;
+  // Always mirror to memory so reads work regardless of Redis state.
+  memSet(key, ttlSeconds);
   if (redisAvailable && redisClient) {
     try {
       await redisClient.setex(key, ttlSeconds, 'valid');
-      return;
     } catch (err) {
-      // Fallback
+      // Memory copy already covers this token.
     }
   }
-  memStore.set(key, Date.now() + ttlSeconds * 1000);
 }
 
 export async function isRefreshTokenValid(userId: string, jti: string): Promise<boolean> {
   const key = `rt:${userId}:${jti}`;
+
   if (redisAvailable && redisClient) {
     try {
       const val = await redisClient.get(key);
-      return val === 'valid';
+      if (val === 'valid') return true;
     } catch (err) {
-      // Fallback
+      // Fall back to memory copy below.
     }
   }
+
   const expiry = memStore.get(key);
   if (!expiry) return false;
   if (Date.now() > expiry) {
     memStore.delete(key);
+    const userKeys = userIndex.get(userId);
+    userKeys?.delete(key);
+    if (userKeys && userKeys.size === 0) userIndex.delete(userId);
     return false;
   }
   return true;
@@ -70,33 +125,41 @@ export async function isRefreshTokenValid(userId: string, jti: string): Promise<
 
 export async function revokeRefreshToken(userId: string, jti: string): Promise<void> {
   const key = `rt:${userId}:${jti}`;
+
+  // Remove in-memory copy first and always, even if Redis is available.
+  memStore.delete(key);
+  const userKeys = userIndex.get(userId);
+  userKeys?.delete(key);
+  if (userKeys && userKeys.size === 0) userIndex.delete(userId);
+
   if (redisAvailable && redisClient) {
     try {
       await redisClient.del(key);
-      return;
     } catch (err) {
-      // Fallback
+      // Redis copy may persist; memory copy is authoritative in this degraded path.
     }
   }
-  memStore.delete(key);
 }
 
 export async function revokeAllUserTokens(userId: string): Promise<void> {
-  const pattern = `rt:${userId}:*`;
+  // Enumerate via the user index so revocation is complete regardless of
+  // which store (Redis or memory) a token currently lives in.
+  const memKeys = userIndex.get(userId);
+  if (memKeys) {
+    for (const key of [...memKeys]) {
+      memStore.delete(key);
+    }
+    userIndex.delete(userId);
+  }
+
   if (redisAvailable && redisClient) {
     try {
-      const keys = await redisClient.keys(pattern);
+      const keys = await redisClient.keys(`rt:${userId}:*`);
       if (keys.length > 0) {
         await redisClient.del(...keys);
       }
-      return;
     } catch (err) {
-      // Fallback
-    }
-  }
-  for (const key of memStore.keys()) {
-    if (key.startsWith(`rt:${userId}:`)) {
-      memStore.delete(key);
+      // Redis copies are already invalidated via TTL; memory copy is fully cleared.
     }
   }
 }

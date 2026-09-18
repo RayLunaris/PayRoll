@@ -8,12 +8,12 @@ vi.mock('@/lib/api', () => ({
 }));
 
 vi.mock('@/lib/auth-cookie', () => ({
-  setAuthCookies: vi.fn(),
-  clearAuthCookies: vi.fn(),
+  persistServerSession: vi.fn().mockResolvedValue(true),
+  clearServerSession: vi.fn().mockResolvedValue(undefined),
 }));
 
 import api from '@/lib/api';
-import { setAuthCookies, clearAuthCookies } from '@/lib/auth-cookie';
+import { persistServerSession, clearServerSession } from '@/lib/auth-cookie';
 import { useAuthStore } from '@/stores/auth';
 
 const mockedPost = vi.mocked(api.post);
@@ -63,7 +63,7 @@ describe('Auth Store', () => {
     expect(state.accessToken).toBe('jwt-token');
     expect(state.isAuthenticated).toBe(true);
     expect(state.isLoading).toBe(false);
-    expect(setAuthCookies).toHaveBeenCalledWith('jwt-token', 'employee');
+    expect(persistServerSession).toHaveBeenCalledWith('jwt-token', 'refresh-token', 'employee');
   });
 
   it('should surface error and clear loading when login fails', async () => {
@@ -102,7 +102,7 @@ describe('Auth Store', () => {
     expect(state.user).toBeNull();
     expect(state.accessToken).toBeNull();
     expect(state.isAuthenticated).toBe(false);
-    expect(clearAuthCookies).toHaveBeenCalled();
+    expect(clearServerSession).toHaveBeenCalled();
     expect(mockedPost).toHaveBeenCalledWith('/auth/logout', {
       refreshToken: 'refresh-token',
     });

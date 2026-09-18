@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, employees, departments, positions, workLocations, eq, ilike, desc, sql } from '@payrollpro/db';
+import { db, employees, departments, positions, workLocations, eq, and, desc, sql } from '@payrollpro/db';
+import type { SQL } from '@payrollpro/db';
 import { requireRole } from '../middleware/auth.js';
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -40,29 +41,43 @@ async function validateForeignKeys(departmentId?: string, positionId?: string, l
   return null;
 }
 
+const MANAGEMENT_ROLES = ['super_admin', 'hr_admin', 'manager'] as const;
+
 export async function employeeRoutes(app: FastifyInstance) {
-  // Get all employees with pagination and search
+  // Get all employees with pagination and search (HR / Manager only)
   app.get('/', {
-    preHandler: [app.authenticate],
+    preHandler: [app.authenticate, requireRole(...MANAGEMENT_ROLES)],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const user = request.user;
       const query = (request.query as { page?: string; limit?: string; search?: string }) || {};
       const page = Math.max(1, parseInt(query.page || '1', 10));
-      const limit = Math.max(1, parseInt(query.limit || '10', 10));
+      const limit = Math.min(200, Math.max(1, parseInt(query.limit || '10', 10)));
       const search = query.search ? query.search.trim() : '';
       const offset = (page - 1) * limit;
 
-      let selectQuery = db.select().from(employees);
-      let countQuery = db.select({ count: sql<string>`count(*)` }).from(employees);
-
-      if (search) {
-        selectQuery = selectQuery.where(ilike(employees.fullName, `%${search}%`)) as typeof selectQuery;
-        countQuery = countQuery.where(ilike(employees.fullName, `%${search}%`)) as typeof countQuery;
+      const conditions: SQL[] = [];
+      if (user.role === 'manager') {
+        // Managers are scoped to their own department
+        const mgr = await db.select({ departmentId: employees.departmentId }).from(employees)
+          .where(eq(employees.userId, user.id)).limit(1);
+        const deptId = mgr.length > 0 ? mgr[0].departmentId : null;
+        if (!deptId) {
+          return reply.send({ success: true, data: [], pagination: { page, limit, total: 0, totalPages: 1 } });
+        }
+        conditions.push(eq(employees.departmentId, deptId));
       }
 
+      if (search) {
+        conditions.push(sql`(${employees.fullName} ILIKE ${`%${search}%`} OR ${employees.nip} ILIKE ${`%${search}%`})`);
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
       const [data, countResult] = await Promise.all([
-        selectQuery.orderBy(desc(employees.createdAt)).limit(limit).offset(offset),
-        countQuery,
+        db.select().from(employees).where(whereClause)
+          .orderBy(desc(employees.createdAt)).limit(limit).offset(offset),
+        db.select({ count: sql<string>`count(*)` }).from(employees).where(whereClause),
       ]);
 
       const total = parseInt(countResult[0]?.count || '0', 10);
@@ -83,16 +98,32 @@ export async function employeeRoutes(app: FastifyInstance) {
     }
   });
 
-  // Get employee by ID
+  // Get employee by ID (own record only for employees; HR/Manager any)
   app.get('/:id', {
     preHandler: [app.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const user = request.user;
       const { id } = request.params as { id: string };
       const result = await db.select().from(employees).where(eq(employees.id, id)).limit(1);
-      
+
       if (result.length === 0) {
         return reply.status(404).send({ success: false, error: 'Employee not found' });
+      }
+
+      if (user.role === 'employee') {
+        const own = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (own.length === 0 || own[0].id !== id) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+        }
+      } else if (user.role === 'manager') {
+        const target = result[0];
+        const mgr = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        const sameDept = mgr.length > 0 && mgr[0].departmentId && target.departmentId === mgr[0].departmentId;
+        const isSelf = mgr.length > 0 && mgr[0].id === id;
+        if (!sameDept && !isSelf) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+        }
       }
 
       return reply.send({ success: true, data: result[0] });

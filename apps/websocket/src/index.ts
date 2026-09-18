@@ -115,7 +115,12 @@ async function main() {
         socket.close(4001, 'Missing token');
         return;
       }
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: string; email?: string };
+      const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: string; email?: string; type?: string };
+      // Only access tokens may open a socket; refresh tokens must never be accepted here.
+      if (decoded.type === 'refresh') {
+        socket.close(4003, 'Invalid token');
+        return;
+      }
       socket.userId = decoded.id;
       socket.userRole = decoded.role;
       socket.userEmail = decoded.email;

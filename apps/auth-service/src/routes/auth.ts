@@ -74,7 +74,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       // Generate tokens with jti for rotation tracking
       const accessToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role as UserRole },
+        { id: user.id, email: user.email, role: user.role as UserRole, type: 'access' },
         { expiresIn: '15m' }
       );
 
@@ -209,7 +209,7 @@ export async function authRoutes(app: FastifyInstance) {
 
       // Issue new access token
       const accessToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role as UserRole },
+        { id: user.id, email: user.email, role: user.role as UserRole, type: 'access' },
         { expiresIn: '15m' }
       );
 

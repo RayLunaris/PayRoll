@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
+import { getApiErrorStatus } from '@/lib/error';
 import { useAuthStore } from '@/stores/auth';
 import type { CashAdvance, Employee } from '@/types';
 import {
@@ -112,8 +113,8 @@ export default function CashAdvancesPage() {
         '/cash-advances/history',
       );
       setAdvances(response.data.data || []);
-    } catch (err: any) {
-      if (err?.response?.status === 404) {
+    } catch (err) {
+      if (getApiErrorStatus(err) === 404) {
         setAdvances([]);
       } else {
         console.error('Failed to fetch cash advances:', err);

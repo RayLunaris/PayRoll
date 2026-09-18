@@ -81,7 +81,11 @@ export default function AbuseDetectionPage() {
   }, [severityFilter, statusFilter]);
 
   useEffect(() => {
-    void fetchAbuseLogs();
+    // Deferred so state updates are not synchronous with the effect body.
+    const timer = window.setTimeout(() => {
+      void fetchAbuseLogs();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchAbuseLogs]);
 
   const handleResolve = async (id: string) => {

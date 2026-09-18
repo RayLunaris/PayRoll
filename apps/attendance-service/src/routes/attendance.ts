@@ -59,6 +59,28 @@ export async function performAutoCheckout(): Promise<number> {
   return processed;
 }
 
+// Resolve target employee (anti-impersonation)
+async function resolveTargetEmployee(
+  user: { id: string; role: string },
+  requestedEmployeeId: string | undefined,
+): Promise<{ employeeId: string; isOwn: boolean } | null> {
+  const own = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+  const canActForOthers = ['super_admin', 'hr_admin'].includes(user.role);
+
+  if (own.length > 0) {
+    if (requestedEmployeeId && own[0].id !== requestedEmployeeId && !canActForOthers) {
+      return { employeeId: '', isOwn: false };
+    }
+    return { employeeId: requestedEmployeeId || own[0].id, isOwn: !requestedEmployeeId || requestedEmployeeId === own[0].id };
+  }
+
+  if (canActForOthers && requestedEmployeeId) {
+    return { employeeId: requestedEmployeeId, isOwn: false };
+  }
+
+  return null;
+}
+
 export async function attendanceRoutes(app: FastifyInstance) {
   // Check in with GPS
   app.post('/check-in', {
@@ -68,12 +90,15 @@ export async function attendanceRoutes(app: FastifyInstance) {
       const user = request.user;
       const body = checkInSchema.parse(request.body);
 
-      // Anti-impersonation: Only admin can specify employeeId for others
-      let employee = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-      if (employee.length === 0 && ['super_admin', 'hr_admin'].includes(user.role) && body.employeeId) {
-        employee = await db.select().from(employees).where(eq(employees.id, body.employeeId)).limit(1);
+      const target = await resolveTargetEmployee(user, body.employeeId);
+      if (!target) {
+        return reply.status(404).send({ success: false, error: 'Employee not found' });
+      }
+      if (!target.isOwn) {
+        return reply.status(403).send({ success: false, error: 'Forbidden: Cannot check-in for another employee' });
       }
 
+      const employee = await db.select().from(employees).where(eq(employees.id, target.employeeId)).limit(1);
       if (employee.length === 0) {
         return reply.status(404).send({ success: false, error: 'Employee not found' });
       }
@@ -217,12 +242,15 @@ export async function attendanceRoutes(app: FastifyInstance) {
       const user = request.user;
       const body = checkOutSchema.parse(request.body);
 
-      // Anti-impersonation
-      let employee = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-      if (employee.length === 0 && ['super_admin', 'hr_admin'].includes(user.role) && body.employeeId) {
-        employee = await db.select().from(employees).where(eq(employees.id, body.employeeId)).limit(1);
+      const target = await resolveTargetEmployee(user, body.employeeId);
+      if (!target) {
+        return reply.status(404).send({ success: false, error: 'Employee not found' });
+      }
+      if (!target.isOwn) {
+        return reply.status(403).send({ success: false, error: 'Forbidden: Cannot check-out for another employee' });
       }
 
+      const employee = await db.select().from(employees).where(eq(employees.id, target.employeeId)).limit(1);
       if (employee.length === 0) {
         return reply.status(404).send({ success: false, error: 'Employee not found' });
       }

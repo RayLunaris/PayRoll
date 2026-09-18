@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 export const socialPosts = pgTable('social_posts', {
@@ -22,9 +22,18 @@ export const socialComments = pgTable('social_comments', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
-export const socialLikes = pgTable('social_likes', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  postId: uuid('post_id').references(() => socialPosts.id),
-  userId: uuid('user_id').references(() => users.id),
-  createdAt: timestamp('created_at').defaultNow(),
-});
+export const socialLikes = pgTable(
+  'social_likes',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    postId: uuid('post_id').references(() => socialPosts.id),
+    userId: uuid('user_id').references(() => users.id),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => ({
+    socialLikesPostUserUnique: uniqueIndex('social_likes_post_user_unique').on(
+      table.postId,
+      table.userId,
+    ),
+  }),
+);

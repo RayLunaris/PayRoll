@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
+import { getApiErrorStatus } from '@/lib/error';
 import type { LeaveType, LeaveQuota } from '@/types';
 import {
   CalendarDays,
@@ -99,8 +100,8 @@ export default function LeaveRequestPage() {
         });
         setQuotaMap(map);
       }
-    } catch (err: any) {
-      if (err?.response?.status !== 404) {
+    } catch (err) {
+      if (getApiErrorStatus(err) !== 404) {
         console.error('Failed to fetch quota:', err);
       }
     }

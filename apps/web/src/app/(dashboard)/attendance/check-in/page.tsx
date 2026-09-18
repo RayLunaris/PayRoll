@@ -67,10 +67,14 @@ export default function CheckInPage() {
 
   // Fetch available work locations
   useEffect(() => {
-    api
-      .get<{ data: WorkLocation[] }>('/locations')
-      .then((res) => setWorkLocations(res.data.data))
-      .catch((err) => console.error('Failed to fetch locations:', err));
+    // Deferred to avoid the react-hooks/set-state-in-effect rule.
+    const timer = window.setTimeout(() => {
+      api
+        .get<{ data: WorkLocation[] }>('/locations')
+        .then((res) => setWorkLocations(res.data.data))
+        .catch((err) => console.error('Failed to fetch locations:', err));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Fetch today's attendance status

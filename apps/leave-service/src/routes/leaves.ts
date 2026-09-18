@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, leaves, leaveQuotas, employees, eq, and, or, desc, sql, gte, lte } from '@payrollpro/db';
+import { db, leaves, leaveQuotas, employees, eq, and, or, desc, sql, gte, lte, inArray } from '@payrollpro/db';
 import { LeaveType } from '@payrollpro/shared-types';
 
 const leaveSchema = z.object({
@@ -36,11 +36,25 @@ export async function leaveRoutes(app: FastifyInstance) {
       const user = request.user;
       const body = leaveSchema.parse(request.body);
 
-      // Get employee (employees can only submit for themselves)
-      let employee = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-      if (employee.length === 0 && ['super_admin', 'hr_admin'].includes(user.role) && body.employeeId) {
-        employee = await db.select().from(employees).where(eq(employees.id, body.employeeId)).limit(1);
+      // Resolve target employee (anti-impersonation)
+      const own = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+      const canActForOthers = ['super_admin', 'hr_admin'].includes(user.role);
+
+      let targetEmployeeId: string | null = null;
+      if (own.length > 0) {
+        if (body.employeeId && own[0].id !== body.employeeId && !canActForOthers) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Cannot submit leave for another employee' });
+        }
+        targetEmployeeId = body.employeeId || own[0].id;
+      } else if (canActForOthers && body.employeeId) {
+        targetEmployeeId = body.employeeId;
       }
+
+      if (!targetEmployeeId) {
+        return reply.status(404).send({ success: false, error: 'Employee not found' });
+      }
+
+      const employee = await db.select().from(employees).where(eq(employees.id, targetEmployeeId)).limit(1);
 
       if (employee.length === 0) {
         return reply.status(404).send({ success: false, error: 'Employee not found' });
@@ -272,7 +286,7 @@ export async function leaveRoutes(app: FastifyInstance) {
       const user = request.user;
 
       if (!['manager', 'hr_admin', 'super_admin'].includes(user.role)) {
-        return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+        return reply.send({ success: true, data: [] });
       }
 
       let data;
@@ -287,10 +301,14 @@ export async function leaveRoutes(app: FastifyInstance) {
           .where(eq(employees.departmentId, mgrEmp[0].departmentId!));
         const deptEmpIds = deptEmps.map(e => e.id);
 
+        if (deptEmpIds.length === 0) {
+          return reply.send({ success: true, data: [] });
+        }
+
         data = await db.select().from(leaves)
           .where(and(
             eq(leaves.status, 'pending'),
-            sql`${leaves.employeeId} IN ${deptEmpIds}`
+            inArray(leaves.employeeId, deptEmpIds)
           ))
           .orderBy(desc(leaves.createdAt));
       } else {
@@ -391,7 +409,11 @@ export async function leaveRoutes(app: FastifyInstance) {
               cursor.setDate(1);
             }
 
+            // Phase 1: validate quota availability BEFORE mutating usedQuota
+            const quotaPlans: { year: number; days: number; existingQuotaId?: string; total: number }[] = [];
             let totalUsedAcrossYears = 0;
+            let totalAvailableAcrossYears = 0;
+
             for (const chunk of yearChunks) {
               const quota = await tx.select().from(leaveQuotas)
                 .where(and(
@@ -405,33 +427,38 @@ export async function leaveRoutes(app: FastifyInstance) {
               const total = quota.length > 0 ? quota[0].totalQuota : (DEFAULT_QUOTAS[targetLeave.leaveType] || 0);
 
               totalUsedAcrossYears += currentUsed;
+              totalAvailableAcrossYears += total;
 
-              if (quota.length > 0) {
+              if (currentUsed + chunk.days > total) {
+                throw new Error(`Insufficient leave quota for ${chunk.year}. Available: ${total - currentUsed}, requested: ${chunk.days}`);
+              }
+
+              quotaPlans.push({
+                year: chunk.year,
+                days: chunk.days,
+                existingQuotaId: quota.length > 0 ? quota[0].id : undefined,
+                total,
+              });
+            }
+
+            if (totalUsedAcrossYears + totalDays > totalAvailableAcrossYears) {
+              throw new Error(`Insufficient leave quota across years. Total available: ${totalAvailableAcrossYears}, requested: ${totalDays}`);
+            }
+
+            // Phase 2: apply quota updates
+            for (const plan of quotaPlans) {
+              if (plan.existingQuotaId) {
                 await tx.update(leaveQuotas)
-                  .set({ usedQuota: sql`${leaveQuotas.usedQuota} + ${chunk.days}` })
-                  .where(eq(leaveQuotas.id, quota[0].id));
+                  .set({ usedQuota: sql`${leaveQuotas.usedQuota} + ${plan.days}` })
+                  .where(eq(leaveQuotas.id, plan.existingQuotaId));
               } else {
                 await tx.insert(leaveQuotas).values({
                   employeeId: targetLeave.employeeId,
                   leaveType: targetLeave.leaveType,
-                  year: chunk.year,
-                  totalQuota: total,
-                  usedQuota: chunk.days,
+                  year: plan.year,
+                  totalQuota: plan.total,
+                  usedQuota: plan.days,
                 });
-              }
-            }
-
-            // Validate combined quota availability across years
-            const hasAnnualLeaveType = yearChunks.every(c => c.days > 0);
-            if (hasAnnualLeaveType) {
-              const allQuotas = await tx.select().from(leaveQuotas)
-                .where(and(
-                  eq(leaveQuotas.employeeId, targetLeave.employeeId),
-                  eq(leaveQuotas.leaveType, targetLeave.leaveType)
-                ));
-              const totalAvailable = allQuotas.reduce((sum, q) => sum + (q.totalQuota - (q.usedQuota || 0)), 0);
-              if (totalUsedAcrossYears > totalAvailable) {
-                throw new Error(`Insufficient leave quota across years. Total available: ${totalAvailable}, requested: ${totalDays}`);
               }
             }
           }

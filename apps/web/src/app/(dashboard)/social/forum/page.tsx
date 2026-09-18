@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import PostCard, { type SocialPost } from '@/components/social/PostCard';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/error';
 import {
   MessagesSquare,
   Plus,
@@ -58,7 +59,11 @@ export default function ForumPage() {
   }, [selectedCategory]);
 
   useEffect(() => {
-    void fetchForumPosts();
+    // Deferred so state updates are not synchronous with the effect body.
+    const timer = window.setTimeout(() => {
+      void fetchForumPosts()
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [fetchForumPosts]);
 
   const handleCreateTopic = async (e: React.FormEvent) => {
@@ -80,9 +85,9 @@ export default function ForumPage() {
         setContent('');
         setShowComposer(false);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to create forum post:', err);
-      setError(err?.response?.data?.message || 'Gagal mempublikasikan diskusi. Coba lagi.');
+      setError(getApiErrorMessage(err, 'Gagal mempublikasikan diskusi. Coba lagi.'));
     } finally {
       setSubmitting(false);
     }

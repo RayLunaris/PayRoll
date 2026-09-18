@@ -1,8 +1,11 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { refreshServerSession } from '@/lib/session'
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -54,22 +57,14 @@ api.interceptors.response.use(
       originalRequest._retry = true
       isRefreshing = true
 
-      const refreshToken = useAuthStore.getState().refreshToken
-
-      if (!refreshToken) {
-        useAuthStore.getState().logout()
-        isRefreshing = false
-        return Promise.reject(error)
-      }
-
       try {
-        const { data } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}/auth/refresh`,
-          { refreshToken },
-        )
-
-        const { accessToken, refreshToken: newRefreshToken } = data.data
-        useAuthStore.getState().setTokens(accessToken, newRefreshToken)
+        // Single-flight, shared with the auth store's session restore: both the
+        // axios 401 interceptor and fetchMe() refresh via the SAME in-flight
+        // request so they can never rotate the refresh token twice in parallel
+        // (the auth-service revokes the rotated token, turning the loser into a
+        // 401 "Session refresh failed").
+        const { accessToken, refreshToken } = await refreshServerSession()
+        useAuthStore.getState().setTokens(accessToken, refreshToken)
 
         processQueue(null, accessToken)
         originalRequest.headers.Authorization = `Bearer ${accessToken}`

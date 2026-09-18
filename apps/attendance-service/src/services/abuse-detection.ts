@@ -1,4 +1,5 @@
 import { db, abuseLogs, attendances, eq, and, desc, gte, lte } from '@payrollpro/db';
+import { getWIBDateString } from '@payrollpro/shared-types';
 import { detectSpoofing } from './gps.js';
 
 export interface AbuseDetectionResult {
@@ -44,7 +45,8 @@ export async function detectBuddyPunching(
   thresholdMinutes: number = 5
 ): Promise<AbuseDetectionResult> {
   const timeWindow = new Date(checkInTime.getTime() - thresholdMinutes * 60 * 1000);
-  const todayStr = checkInTime.toISOString().split('T')[0];
+  // Attendance.date is stored in WIB, so derive the key from the WIB calendar day.
+  const todayStr = getWIBDateString(checkInTime);
 
   const recentCheckIns = await db.select().from(attendances)
     .where(and(
@@ -86,12 +88,9 @@ export async function detectAbnormalOvertime(
   employeeId: string,
   maxOvertimeHours: number = 60
 ): Promise<AbuseDetectionResult> {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  const startDate = monthStart.toISOString().split('T')[0];
-
-  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-  const endDate = monthEnd.toISOString().split('T')[0];
+  const now = new Date();
+  const startDate = getWIBDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+  const endDate = getWIBDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
   const records = await db.select().from(attendances)
     .where(and(

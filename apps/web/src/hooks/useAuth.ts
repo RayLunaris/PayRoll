@@ -23,13 +23,21 @@ export function useAuth() {
 export function useRequireAuth() {
   const router = useRouter()
   const { user, isAuthenticated, isLoading, hasHydrated } = useAuth()
+  const restoreFinished = useAuthStore((state) => state.restoreAttempted)
   const loading = isLoading || !hasHydrated
 
   useEffect(() => {
-    if (hasHydrated && !isLoading && !isAuthenticated) {
+    // Only redirect when session-restore has actually COMPLETED (restoreFinished).
+    // On cold page loads fetchMe() restores from the HttpOnly refresh-token
+    // cookie, which is async; if the guard fires its router.replace('/login') on
+    // the very first commit — while isLoading is still false and the restore is
+    // in flight — every dashboard page hard-lands on /login even though the
+    // restore + /auth/me succeed a moment later (the E2E "Session refresh
+    // failed / target page closed" class of flake).
+    if (hasHydrated && restoreFinished && !isLoading && !isAuthenticated) {
       router.replace('/login')
     }
-  }, [hasHydrated, isAuthenticated, isLoading, router])
+  }, [hasHydrated, isAuthenticated, isLoading, restoreFinished, router])
 
   return { user, isAuthenticated, isLoading: loading, hasHydrated }
 }

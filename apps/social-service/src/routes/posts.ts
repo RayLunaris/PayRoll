@@ -235,14 +235,32 @@ export async function postRoutes(app: FastifyInstance) {
           liked = false;
           newLikesCount = updated.likesCount ?? 0;
         } else {
-          // Like
-          await tx.insert(socialLikes).values({ postId: id, userId: user.id });
-          const [updated] = await tx.update(socialPosts)
-            .set({ likesCount: sql`${socialPosts.likesCount} + 1` })
-            .where(eq(socialPosts.id, id))
-            .returning({ likesCount: socialPosts.likesCount });
-          liked = true;
-          newLikesCount = updated.likesCount ?? 0;
+          // Like (idempotent insert guards against concurrent duplicate likes)
+          await tx.insert(socialLikes)
+            .values({ postId: id, userId: user.id })
+            .onConflictDoNothing();
+          const [existingAfter] = await tx.select()
+            .from(socialLikes)
+            .where(and(
+              eq(socialLikes.postId, id),
+              eq(socialLikes.userId, user.id)
+            ))
+            .limit(1);
+          if (existingAfter) {
+            const [updated] = await tx.update(socialPosts)
+              .set({ likesCount: sql`${socialPosts.likesCount} + 1` })
+              .where(eq(socialPosts.id, id))
+              .returning({ likesCount: socialPosts.likesCount });
+            liked = true;
+            newLikesCount = updated.likesCount ?? 0;
+          } else {
+            // A concurrent request already handled this like.
+            const [current] = await tx.select({ likesCount: socialPosts.likesCount })
+              .from(socialPosts)
+              .where(eq(socialPosts.id, id))
+              .limit(1);
+            newLikesCount = current?.likesCount ?? 0;
+          }
         }
       });
 

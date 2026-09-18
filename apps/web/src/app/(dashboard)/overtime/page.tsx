@@ -76,26 +76,24 @@ export default function OvertimePage() {
       setLoading(true);
       setError('');
       try {
-        const promises: Promise<any>[] = [
-          api.get<{ data: AttendanceRecord[] }>(`/attendance/history?month=${month}&year=${year}`),
-          api.get<{ data: OvertimeRate[] }>('/overtime-rates').catch(() => ({ data: { data: [] } })),
-        ];
+        const [attRes, rateRes] = await Promise.all([
+          api.get<{ data: AttendanceRecord[] }>(`/attendance/history?month=${month}&year=${year}`).catch(() => undefined),
+          api.get<{ data: OvertimeRate[] }>('/overtime-rates').catch(() => undefined),
+        ]);
 
+        let empData: Employee[] = [];
+        let deptData: Department[] = [];
         if (isManagerOrAdmin) {
-          promises.push(
-            api.get<{ data: Employee[] }>('/employees?page=1&limit=200').catch(() => ({ data: { data: [] } })),
-            api.get<{ data: Department[] }>('/departments').catch(() => ({ data: { data: [] } })),
-          );
+          const [empRes, deptRes] = await Promise.all([
+            api.get<{ data: Employee[] }>('/employees?page=1&limit=200').catch(() => undefined),
+            api.get<{ data: Department[] }>('/departments').catch(() => undefined),
+          ]);
+          empData = empRes?.data?.data || [];
+          deptData = deptRes?.data?.data || [];
         }
 
-        const results = await Promise.all(promises);
-        const attData = results[0]?.data?.data || [];
-        const rateData = results[1]?.data?.data || [];
-        const empData = results[2]?.data?.data || [];
-        const deptData = results[3]?.data?.data || [];
-
-        setRecords(attData);
-        setRates(rateData);
+        setRecords(attRes?.data?.data || []);
+        setRates(rateRes?.data?.data || []);
         setEmployees(empData);
         setDepartments(deptData);
       } catch (err) {

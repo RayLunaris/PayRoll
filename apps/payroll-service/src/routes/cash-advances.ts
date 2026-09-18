@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, cashAdvances, employees, eq, and, desc } from '@payrollpro/db';
+import { db, cashAdvances, employees, eq, and, desc, inArray } from '@payrollpro/db';
 
 const cashAdvanceSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
@@ -12,6 +12,36 @@ const approveSchema = z.object({
   approved: z.boolean(),
 });
 
+const ADMIN_ROLES = ['super_admin', 'hr_admin', 'manager'];
+
+// Resolve which employee record a request may target.
+// - Employees: only their own record; impersonation is rejected.
+// - Admins/HR/Managers: may act on behalf of another employee (body.employeeId).
+async function resolveTargetEmployee(
+  user: { id: string; role: string },
+  requestedEmployeeId: string | undefined,
+): Promise<{ employeeId: string; isOwn: boolean } | null> {
+  const own = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+
+  if (ADMIN_ROLES.includes(user.role)) {
+    if (requestedEmployeeId) {
+      return { employeeId: requestedEmployeeId, isOwn: own.length > 0 && own[0].id === requestedEmployeeId };
+    }
+    if (own.length > 0) {
+      return { employeeId: own[0].id, isOwn: true };
+    }
+    return null;
+  }
+
+  if (own.length === 0) {
+    return null;
+  }
+  if (requestedEmployeeId && requestedEmployeeId !== own[0].id) {
+    return { employeeId: '', isOwn: false };
+  }
+  return { employeeId: own[0].id, isOwn: true };
+}
+
 export async function cashAdvanceRoutes(app: FastifyInstance) {
   // Request cash advance
   app.post('/', {
@@ -21,16 +51,15 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
       const user = request.user;
       const body = cashAdvanceSchema.parse(request.body);
 
-      let employee = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-      if (employee.length === 0 && body.employeeId) {
-        employee = await db.select().from(employees).where(eq(employees.id, body.employeeId)).limit(1);
-      }
-
-      if (employee.length === 0) {
+      const target = await resolveTargetEmployee(user, body.employeeId);
+      if (!target) {
         return reply.status(404).send({ success: false, error: 'Employee not found' });
       }
+      if (!target.isOwn) {
+        return reply.status(403).send({ success: false, error: 'Forbidden: Cannot request cash advance for another employee' });
+      }
 
-      const emp = employee[0];
+      const emp = (await db.select().from(employees).where(eq(employees.id, target.employeeId)).limit(1))[0];
       const baseSalary = parseFloat(emp.baseSalary || '0');
 
       // Check cash advance limit (maximum 25% of base salary)
@@ -62,6 +91,23 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
         });
       }
 
+      // Cumulative limit: total approved/deducted advances this month + this request <= 25%
+      const existingApproved = await db.select().from(cashAdvances)
+        .where(and(
+          eq(cashAdvances.employeeId, emp.id),
+          eq(cashAdvances.month, currentMonth),
+          eq(cashAdvances.year, currentYear),
+          inArray(cashAdvances.status, ['approved', 'deducted'])
+        ));
+
+      const alreadyApproved = existingApproved.reduce((sum, a) => sum + parseFloat(a.amount || '0'), 0);
+      if (alreadyApproved + body.amount > maxAdvance) {
+        return reply.status(400).send({
+          success: false,
+          error: `Cash advance exceeds 25% monthly limit. Already approved: Rp ${alreadyApproved.toLocaleString('id-ID')}, available: Rp ${(maxAdvance - alreadyApproved).toLocaleString('id-ID')}`,
+        });
+      }
+
       const newAdvance = await db.insert(cashAdvances).values({
         employeeId: emp.id,
         amount: body.amount.toFixed(2),
@@ -81,7 +127,7 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
     }
   });
 
-  // Get employee cash advance history
+  // Get employee cash advance history (own record only, unless HR/Manager)
   app.get('/history', {
     preHandler: [app.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -89,17 +135,16 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
       const user = request.user;
       const { employeeId } = request.query as { employeeId?: string };
 
-      let employee = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-      if (employee.length === 0 && employeeId) {
-        employee = await db.select().from(employees).where(eq(employees.id, employeeId)).limit(1);
-      }
-
-      if (employee.length === 0) {
+      const target = await resolveTargetEmployee(user, employeeId);
+      if (!target) {
         return reply.send({ success: true, data: [] });
+      }
+      if (!target.isOwn) {
+        return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
       }
 
       const data = await db.select().from(cashAdvances)
-        .where(eq(cashAdvances.employeeId, employee[0].id))
+        .where(eq(cashAdvances.employeeId, target.employeeId))
         .orderBy(desc(cashAdvances.createdAt));
 
       return reply.send({ success: true, data });
@@ -115,7 +160,7 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const user = request.user;
-      if (!['manager', 'hr_admin', 'super_admin'].includes(user.role)) {
+      if (!ADMIN_ROLES.includes(user.role)) {
         return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
       }
 
@@ -133,7 +178,7 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const user = request.user;
-      if (!['manager', 'hr_admin', 'super_admin'].includes(user.role)) {
+      if (!ADMIN_ROLES.includes(user.role)) {
         return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
       }
 

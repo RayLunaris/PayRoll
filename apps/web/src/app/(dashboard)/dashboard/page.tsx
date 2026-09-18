@@ -7,6 +7,7 @@ import AttendanceChart from '@/components/dashboard/AttendanceChart';
 import PayrollChart from '@/components/dashboard/PayrollChart';
 import RecentActivity from '@/components/dashboard/RecentActivity';
 import QuickActions from '@/components/dashboard/QuickActions';
+import { useAuthStore } from '@/stores/auth';
 import api from '@/lib/api';
 import {
   Users,
@@ -23,6 +24,7 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
+  const user = useAuthStore((state) => state.user);
   const [stats, setStats] = useState<DashboardStats>({
     totalEmployees: 0,
     presentToday: 0,
@@ -36,10 +38,13 @@ export default function DashboardPage() {
 
     void (async () => {
       try {
+        const isApprover = user && ['manager', 'hr_admin', 'super_admin'].includes(user.role);
         const [employees, attendance, approvals] = await Promise.all([
           api.get('/employees').catch(() => ({ data: { data: [] } })),
           api.get('/attendance/today').catch(() => ({ data: { data: null } })),
-          api.get('/leaves/approvals').catch(() => ({ data: { data: [] } })),
+          isApprover
+            ? api.get('/leaves/approvals').catch(() => ({ data: { data: [] } }))
+            : Promise.resolve({ data: { data: [] } }),
         ]);
 
         if (!active) return;
