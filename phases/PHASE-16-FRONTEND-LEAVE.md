@@ -510,13 +510,13 @@ EOF
 
 ## Verification Checklist
 
-- [ ] Form pengajuan cuti berfungsi
-- [ ] Validasi form bekerja
-- [ ] Kuota ditampilkan dan diperiksa
-- [ ] Riwayat cuti ditampilkan
-- [ ] Status badge ditampilkan
-- [ ] Manager dapat approve/reject
-- [ ] Data ter-refresh setelah aksi
+- [x] Form pengajuan cuti berfungsi
+- [x] Validasi form bekerja
+- [x] Kuota ditampilkan dan diperiksa
+- [x] Riwayat cuti ditampilkan
+- [x] Status badge ditampilkan
+- [x] Manager dapat approve/reject
+- [x] Data ter-refresh setelah aksi
 
 ---
 

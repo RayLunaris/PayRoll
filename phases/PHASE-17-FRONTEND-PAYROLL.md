@@ -680,15 +680,15 @@ EOF
 
 ## Verification Checklist
 
-- [ ] Slip gaji list ditampilkan
-- [ ] Download PDF berfungsi
-- [ ] Proses payroll berfungsi (HR only)
-- [ ] Kasbon pengajuan berfungsi
-- [ ] Kasbon limit 25% diperiksa
-- [ ] Riwayat kasbon ditampilkan
-- [ ] BPJS report page (HR only)
-- [ ] Tax report page (HR only)
-- [ ] Format Rupiah benar
+- [x] Slip gaji list ditampilkan
+- [x] Download PDF berfungsi
+- [x] Proses payroll berfungsi (HR only)
+- [x] Kasbon pengajuan berfungsi
+- [x] Kasbon limit 25% diperiksa
+- [x] Riwayat kasbon ditampilkan
+- [x] BPJS report page (HR only)
+- [x] Tax report page (HR only)
+- [x] Format Rupiah benar
 
 ---
 

@@ -181,7 +181,7 @@ echo 'export PATH="/usr/bin:$PATH"' >> ~/.bashrc
 ### Error: "docker-compose: command not found"
 
 ```bash
-# Pastikan docker-compose terinstall
+# Pastikan docker-compose terinstall~
 sudo pacman -S docker-compose
 
 # Atau gunakan docker compose (tanpa dash)

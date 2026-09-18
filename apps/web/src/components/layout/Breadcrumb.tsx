@@ -12,6 +12,8 @@ const routeLabels: Record<string, string> = {
   payroll: 'Payroll',
   employees: 'Karyawan',
   shift: 'Shift',
+  calendar: 'Kalender',
+  assign: 'Penugasan',
   social: 'Sosial',
   reports: 'Laporan',
   settings: 'Pengaturan',
