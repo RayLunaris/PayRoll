@@ -40,3 +40,7 @@ coverage/
 # Temp
 tmp/
 temp/
+
+# Test artifacts
+apps/web/test-results/
+apps/web/playwright-report/

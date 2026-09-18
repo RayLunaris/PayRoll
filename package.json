@@ -21,7 +21,9 @@
     "db:studio": "pnpm --filter @payrollpro/db studio",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f"
+    "docker:logs": "docker-compose logs -f",
+    "test:unit": "pnpm -r --if-present test",
+    "test:e2e": "pnpm --filter @payrollpro/web test:e2e"
   },
   "engines": {
     "node": ">=22"

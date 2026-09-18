@@ -520,16 +520,59 @@ Checklist perbaikan umum:
 
 ## Verification Checklist
 
-- [ ] Unit test haversine & payroll lulus
-- [ ] Integration test auth service lulus
-- [ ] Redis integration test lulus
-- [ ] Frontend store & api tests lulus
-- [ ] E2E login flow lulus
-- [ ] E2E employee CRUD lulus
-- [ ] E2E attendance lulus
-- [ ] All TypeScript noEmit lulus
-- [ ] Load test tanpa 5xx errors
-- [ ] Database terpopulasi via seed
+- [x] Unit test haversine & payroll lulus — `gps.test.ts` 9/9, `payslip.test.ts` 4/4
+- [x] Integration test auth service lulus — `auth.test.ts` 10/10
+- [x] Redis integration test lulus — `redis.test.ts` 2/2 (ioredis)
+- [x] Frontend store & api tests lulus — `auth-store` 5, `api` 3
+- [x] E2E login flow lulus
+- [x] E2E employee CRUD lulus
+- [x] E2E attendance lulus
+- [x] All TypeScript noEmit lulus — `pnpm -r exec tsc --noEmit` bersih
+- [x] Load test tanpa 5xx errors — health 15k req, 100% 200, p95 35ms; login rate-limited 429 (didokumentasikan)
+- [x] Database terpopulasi via seed — dev + `payrollpro_test`; 0 data uji tersisa
+
+---
+
+## Hasil & Temuan (dicatat saat pelaksanaan / Rule 12)
+
+### Ringkasan hasil
+| Item | Hasil |
+|---|---|
+| Unit test (hapus haversine & payslip) | 9 + 4 = 13 lulus |
+| Integration test auth (termasuk Redis) | 12 lulus |
+| Integration test payroll | 5 lulus |
+| Frontend unit (auth-store & api client) | 8 lulus |
+| E2E Playwright (login, employee CRUD, attendance check-in) | 6/6 lulus |
+| Load test `/auth/login` (c20, 5s) | p95 23ms saat loop; 429 setelah kuota IP (rate-limit) — bukan 5xx |
+| Load test `/health` (c50, 5s) | 15.382 req, 0 error, 100% 200, p95 ≤ 35ms |
+| `pnpm -r exec tsc --noEmit` | bersih (semua paket) |
+| Build `@payrollpro/web` | sukses |
+| Sisa data uji di DB | 0 (dev & `payrollpro_test`) |
+
+### Temuan kritis yang DIPERBAIKI
+1. **Race condition hydration auth (kritis)** — `useRequireAuth` men-trigger `router.replace('/login')` sebelum zustand `persist` selesai rehydrate → hard navigation ke halaman lindungi (termasuk `refresh`) secara acak mengeluarkan user ke login (menu/halaman hilang). Perbaikan: flag `hasHydrated` + `merge` persist yang membuat `isAuthenticated`/`hasHydrated` deterministik sejak render pertama; hooks `useAuth`/`useRequireAuth`/`useRequireRole` digate `hasHydrated`. File: `apps/web/src/stores/auth.ts`, `apps/web/src/hooks/useAuth.ts`.
+2. **Rate-limit global gateway mencemari `/health` (kritis operasional)** — `@fastify/rate-limit` global (max 100/min/IP) berlaku juga untuk `/health`, `/healthcheck`, `/docs`, `/`. Burst di satu endpoint (mis. login) membuat health check ikut 429 → monitoring keliru menganggap gateway down. Perbaikan: `allowList` untuk `/`, `/health`, `/healthcheck`, `/docs`. File: `apps/api-gateway/src/plugins/rate-limit.ts`.
+3. **Fetch gagal dirender sebagai "belum ada data" (sistemik)** — gagal, lalu tabel "Belum ada..." membuat HR bisa ekspor CSV kosong yang terlihat valid. Perbaikan: banner error + gate empty-state untuk 11 halaman: `reports/{payroll,overtime,attendance,employee}`, `employees` (list + `[id]` detail yang tadinya render `null` blank), `leave/history`, `attendance/history`, `payroll/cash-advances`, `settings/{users,departments,locations}` + indikator loading.
+
+### Temuan yang dicatat namun TIDAK diperbaiki (di luar batch kritis / butuh backend)
+- **Dashboard menampilkan data placeholder sebagai nyata** — `AttendanceChart`, `PayrollChart`, `RecentActivity` memakai `MOCK_DATA` (TODO), stat "Hadir Hari Ini"/"Cuti Berjalan" hardcoded (0/1). Perlu endpoint agregat backend (dashboard stats) — diserahkan ke fase berikutnya, jangan diperbaiki asal agar tidak menyesatkan.
+- **`MapView` "Map container is already initialized"** — unhandledRejection saat komponen re-render; overlay dev Next menampilkannya, tidak memblok fungsi.
+- **`DELETE /auth/users/:id` mengembalikan 500 bila karyawan masih menautkan user** (FK) — alih-alih 400 yang informatif. Tidak menghambat alur E2E (hapus karyawan dulu, baru user).
+- **`Failed to fetch quota` 401 pada dashboard untuk role admin** — kuota cuti di-fetch untuk semua role; request 401 ditangkap diam-diam.
+
+### Dokumen fasa 23 yang DIPERBAIKI saat perencanaan (ketidakcocokan dengan kode nyata)
+- `@payrollpro/shared` tidak ada → target test haversine dipindah ke `apps/attendance-service/src/services/gps.ts`.
+- `/api/auth/register` ADA (dipakai integration test), `PORT=3002` bukan.
+- Pencarian employee hanya `ilike(fullName)` (bukan NIP), rate limit login 10/min/IP, BASE_URL gateway = `http://localhost:3001/api`.
+- `/api/dashboard/stats` tidak ada → load test ditarik ke `/health` gateway + `/auth/login`.
+
+### Cara menjalankan
+```bash
+docker exec payrollpro-postgres psql -U postgres -d postgres -c "CREATE DATABASE payrollpro_test;"
+pnpm db:migrate:test && pnpm db:seed:test        # (lihat konfigurasi vitest.env di tiap service)
+pnpm test:unit                                     # unit + integration (4 paket)
+pnpm test:e2e                                      # E2E Penuh (stack dev harus berjalan)
+```
 
 ---
 

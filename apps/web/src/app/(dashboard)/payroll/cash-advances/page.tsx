@@ -114,6 +114,7 @@ export default function CashAdvancesPage() {
       setAdvances(response.data.data || []);
     } catch (err: unknown) {
       console.error('Failed to fetch cash advances:', err);
+      setError('Gagal memuat data kasbon. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -291,7 +292,7 @@ export default function CashAdvancesPage() {
             <div className="flex justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
             </div>
-          ) : advances.length === 0 ? (
+          ) : advances.length === 0 && !error ? (
             <div className="text-center py-12 text-gray-500 space-y-2">
               <Wallet className="h-10 w-10 text-gray-300 mx-auto" />
               <p className="font-medium text-gray-700">Belum Ada Pengajuan Kasbon</p>

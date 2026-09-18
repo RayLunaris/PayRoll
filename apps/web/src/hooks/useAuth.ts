@@ -8,40 +8,43 @@ export function useAuth() {
   const user = useAuthStore((state) => state.user)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
+  const hasHydrated = useAuthStore((state) => state.hasHydrated)
   const fetchMe = useAuthStore((state) => state.fetchMe)
 
   useEffect(() => {
-    if (!isAuthenticated && !isLoading) {
+    if (hasHydrated && !isAuthenticated && !isLoading) {
       fetchMe()
     }
-  }, [isAuthenticated, isLoading, fetchMe])
+  }, [hasHydrated, isAuthenticated, isLoading, fetchMe])
 
-  return { user, isAuthenticated, isLoading }
+  return { user, isAuthenticated, isLoading, hasHydrated }
 }
 
 export function useRequireAuth() {
   const router = useRouter()
-  const { user, isAuthenticated, isLoading } = useAuth()
+  const { user, isAuthenticated, isLoading, hasHydrated } = useAuth()
+  const loading = isLoading || !hasHydrated
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (hasHydrated && !isLoading && !isAuthenticated) {
       router.replace('/login')
     }
-  }, [isAuthenticated, isLoading, router])
+  }, [hasHydrated, isAuthenticated, isLoading, router])
 
-  return { user, isAuthenticated, isLoading }
+  return { user, isAuthenticated, isLoading: loading, hasHydrated }
 }
 
 export function useRequireRole(...roles: string[]) {
   const router = useRouter()
-  const { user, isAuthenticated, isLoading } = useAuth()
+  const { user, isAuthenticated, isLoading, hasHydrated } = useAuth()
+  const loading = isLoading || !hasHydrated
   const rolesKey = roles.join(',')
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && user && !rolesKey.split(',').includes(user.role)) {
+    if (hasHydrated && !isLoading && isAuthenticated && user && !rolesKey.split(',').includes(user.role)) {
       router.replace('/dashboard')
     }
-  }, [user, isAuthenticated, isLoading, rolesKey, router])
+  }, [user, isAuthenticated, isLoading, hasHydrated, rolesKey, router])
 
-  return { user, isAuthenticated, isLoading }
+  return { user, isAuthenticated, isLoading: loading }
 }

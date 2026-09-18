@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { hash, compare } from 'bcrypt';
-import { db, users, eq } from '@payrollpro/db';
+import { db, users, eq, desc } from '@payrollpro/db';
 import { UserRole } from '@payrollpro/shared-types';
 import { requireRole } from '../middleware/auth.js';
 import {
@@ -22,6 +22,21 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6).max(72),
   employeeId: z.string().uuid().optional(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(72),
+  newPassword: z.string().min(6).max(72),
+});
+
+const createUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6).max(72),
+  role: z.enum(['super_admin', 'hr_admin', 'manager', 'employee']),
+});
+
+const updateUserRoleSchema = z.object({
+  role: z.enum(['super_admin', 'hr_admin', 'manager', 'employee']),
 });
 
 export async function authRoutes(app: FastifyInstance) {
@@ -258,5 +273,161 @@ export async function authRoutes(app: FastifyInstance) {
     preHandler: [app.authenticate, requireRole('super_admin', 'hr_admin')],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     return reply.send({ success: true, message: 'Admin access granted' });
+  });
+
+  // Change password (self-service)
+  app.put('/password', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user;
+      const body = changePasswordSchema.parse(request.body);
+
+      const [found] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+      if (!found) {
+        return reply.status(404).send({ success: false, error: 'User not found' });
+      }
+
+      const isValid = await compare(body.currentPassword, found.passwordHash);
+      if (!isValid) {
+        return reply.status(401).send({ success: false, error: 'Password saat ini salah' });
+      }
+
+      const passwordHash = await hash(body.newPassword, 12);
+      await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+
+      return reply.send({ success: true, message: 'Password berhasil diubah' });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ success: false, error: 'Validation error', details: error.errors });
+      }
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // List users (admin only)
+  app.get('/users', {
+    preHandler: [app.authenticate, requireRole('hr_admin', 'super_admin')],
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const data = await db.select().from(users).orderBy(desc(users.createdAt));
+      return reply.send({
+        success: true,
+        data: data.map((user) => ({
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          employeeId: user.employeeId,
+          isActive: user.isActive,
+          lastLogin: user.lastLogin,
+          createdAt: user.createdAt,
+        })),
+      });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // Create user (admin only)
+  app.post('/users', {
+    preHandler: [app.authenticate, requireRole('hr_admin', 'super_admin')],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = createUserSchema.parse(request.body);
+
+      const existingUser = await db.select().from(users).where(eq(users.email, body.email)).limit(1);
+      if (existingUser.length > 0) {
+        return reply.status(409).send({ success: false, error: 'Email already exists' });
+      }
+
+      const passwordHash = await hash(body.password, 12);
+      const [newUser] = await db.insert(users).values({
+        email: body.email,
+        passwordHash,
+        role: body.role,
+        isActive: true,
+      }).returning();
+
+      return reply.status(201).send({
+        success: true,
+        data: {
+          id: newUser.id,
+          email: newUser.email,
+          role: newUser.role,
+        },
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ success: false, error: 'Validation error', details: error.errors });
+      }
+      if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
+        return reply.status(409).send({ success: false, error: 'Email already exists' });
+      }
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // Update user role (admin only; self-demotion blocked)
+  app.put('/users/:id/role', {
+    preHandler: [app.authenticate, requireRole('hr_admin', 'super_admin')],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const body = updateUserRoleSchema.parse(request.body);
+      const actor = request.user;
+
+      if (actor.id === id) {
+        return reply.status(400).send({ success: false, error: 'Tidak dapat mengubah role akun sendiri' });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      if (!user) {
+        return reply.status(404).send({ success: false, error: 'User not found' });
+      }
+
+      const [updated] = await db.update(users).set({ role: body.role }).where(eq(users.id, id)).returning();
+      await revokeAllUserTokens(id);
+
+      return reply.send({
+        success: true,
+        data: { id: updated.id, email: updated.email, role: updated.role },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ success: false, error: 'Validation error', details: error.errors });
+      }
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // Delete user (super admin only; self-deletion blocked)
+  app.delete('/users/:id', {
+    preHandler: [app.authenticate, requireRole('super_admin')],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const actor = request.user;
+
+      if (actor.id === id) {
+        return reply.status(400).send({ success: false, error: 'Tidak dapat menghapus akun sendiri' });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      if (!user) {
+        return reply.status(404).send({ success: false, error: 'User not found' });
+      }
+
+      await revokeAllUserTokens(id);
+      await db.delete(users).where(eq(users.id, id));
+
+      return reply.send({ success: true, message: 'User deleted' });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
   });
 }

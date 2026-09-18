@@ -55,6 +55,7 @@ function formatDate(dateStr: string): string {
 export default function LeaveHistoryPage() {
   const [history, setHistory] = useState<LeaveRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{
@@ -116,6 +117,13 @@ export default function LeaveHistoryPage() {
   return (
     <div>
       <Breadcrumb />
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
@@ -180,7 +188,7 @@ export default function LeaveHistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredHistory.length === 0 ? (
+                {filteredHistory.length === 0 && !error ? (
                   <tr>
                     <td colSpan={7} className="text-center py-10 text-gray-500">
                       {statusFilter === 'all'

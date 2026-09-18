@@ -4,6 +4,9 @@ import jwt from '@fastify/jwt';
 import './types/index.js';
 import { payrollRoutes } from './routes/payrolls.js';
 import { cashAdvanceRoutes } from './routes/cash-advances.js';
+import { bpjsConfigRoutes } from './routes/bpjs-config.js';
+import { taxConfigRoutes } from './routes/tax-config.js';
+import { overtimeRateRoutes } from './routes/overtime-rates.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -32,6 +35,9 @@ export async function buildApp() {
   // Register routes
   await app.register(payrollRoutes, { prefix: '/api/payrolls' });
   await app.register(cashAdvanceRoutes, { prefix: '/api/cash-advances' });
+  await app.register(bpjsConfigRoutes, { prefix: '/api/bpjs-config' });
+  await app.register(taxConfigRoutes, { prefix: '/api/tax-config' });
+  await app.register(overtimeRateRoutes, { prefix: '/api/overtime-rates' });
 
   // Health check
   app.get('/health', async () => {

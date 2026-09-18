@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   User,
   Building2,
@@ -57,6 +58,7 @@ export default function EmployeeDetailPage() {
   const [positions, setPositions] = useState<NamedEntity[]>([]);
   const [locations, setLocations] = useState<NamedEntity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const fetchEmployee = useCallback(async () => {
     setLoading(true);
@@ -79,6 +81,7 @@ export default function EmployeeDetailPage() {
       setLocations(locRes.data.data || []);
     } catch (error) {
       console.error('Failed to fetch employee:', error);
+      setError('Gagal memuat detail karyawan. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -101,7 +104,22 @@ export default function EmployeeDetailPage() {
     );
   }
 
-  if (!employee) return null;
+  if (!employee) {
+    return (
+      <div>
+        <Breadcrumb />
+        <div className="card p-6 text-center">
+          <p className="text-sm text-gray-500">{error || 'Karyawan tidak ditemukan.'}</p>
+          <Link
+            href="/employees"
+            className="btn btn-secondary mt-4"
+          >
+            Kembali ke Daftar Karyawan
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

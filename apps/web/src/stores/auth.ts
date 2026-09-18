@@ -11,6 +11,7 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
+  hasHydrated: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   fetchMe: () => Promise<void>
@@ -27,6 +28,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      hasHydrated: false,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null })
@@ -100,10 +102,20 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
+        isAuthenticated: state.isAuthenticated,
       }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AuthState>
+        const hasTokens = Boolean(p.accessToken)
+        return {
+          ...current,
+          ...p,
+          isAuthenticated: hasTokens,
+          hasHydrated: true,
+        }
+      },
       onRehydrateStorage: () => (state) => {
         if (state?.accessToken) {
-          state.isAuthenticated = true
           setAuthCookies(state.accessToken, state.user?.role)
         } else {
           clearAuthCookies()

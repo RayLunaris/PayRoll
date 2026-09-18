@@ -44,6 +44,7 @@ export default function EmployeeListPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const fetchDepartments = useCallback(async () => {
     try {
@@ -69,8 +70,10 @@ export default function EmployeeListPage() {
       }>(`/employees?${params}`);
       setEmployees(response.data.data);
       setTotalPages(response.data.pagination.totalPages);
+      setError('');
     } catch (error) {
       console.error('Failed to fetch employees:', error);
+      setError('Gagal memuat data karyawan. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -121,6 +124,12 @@ export default function EmployeeListPage() {
   return (
     <div>
       <Breadcrumb />
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
@@ -179,7 +188,7 @@ export default function EmployeeListPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.length === 0 ? (
+                  {employees.length === 0 && !error ? (
                     <tr>
                       <td colSpan={7} className="text-center py-8 text-gray-500">
                         Tidak ada data karyawan

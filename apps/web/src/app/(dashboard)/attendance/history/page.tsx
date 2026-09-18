@@ -62,6 +62,7 @@ export default function AttendanceHistoryPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // Initial load on mount using void IIFE so setState is never called
   // synchronously in the effect body (satisfies react-hooks/set-state-in-effect).
@@ -72,6 +73,7 @@ export default function AttendanceHistoryPage() {
         setHistory(data);
       } catch (err) {
         console.error('Failed to fetch attendance history:', err);
+        setError('Gagal memuat riwayat kehadiran. Silakan coba lagi.');
       } finally {
         setLoading(false);
       }
@@ -93,6 +95,13 @@ export default function AttendanceHistoryPage() {
   return (
     <div>
       <Breadcrumb />
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
 
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -147,7 +156,7 @@ export default function AttendanceHistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {history.length === 0 ? (
+                {history.length === 0 && !error ? (
                   <tr>
                     <td colSpan={5} className="text-center py-8 text-gray-500">
                       Tidak ada data kehadiran

@@ -117,7 +117,7 @@ export default function Sidebar() {
       label: 'Pengaturan',
       icon: <Settings className="h-5 w-5" />,
       href: '/settings',
-      roles: ['super_admin'],
+      roles: ['hr_admin', 'super_admin'],
     },
   ]
 
