@@ -13,6 +13,7 @@ import {
   KeyRound,
   Building2,
   MapPin,
+  Briefcase,
 } from 'lucide-react';
 
 const ALLOWED_ROLES = ['hr_admin', 'super_admin'];
@@ -45,10 +46,16 @@ const settingGroups = [
     title: 'Kepegawaian',
     items: [
       {
-        label: 'Departemen & Jabatan',
-        description: 'Kelola struktur organisasi',
+        label: 'Departemen',
+        description: 'Kelola departemen dan struktur organisasi',
         icon: Building2,
         href: '/settings/departments',
+      },
+      {
+        label: 'Jabatan & Posisi',
+        description: 'Kelola jenjang grade dan acuan gaji pokok',
+        icon: Briefcase,
+        href: '/settings/positions',
       },
       {
         label: 'Lokasi Perusahaan',

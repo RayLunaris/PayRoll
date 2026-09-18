@@ -55,6 +55,7 @@ export default function Sidebar() {
         { label: 'Check-in / Check-out', href: '/attendance/check-in' },
         { label: 'Riwayat Kehadiran', href: '/attendance/history' },
         { label: 'Laporan Kehadiran', href: '/attendance/report', roles: ['hr_admin', 'manager', 'super_admin'] },
+        { label: 'Deteksi Pelanggaran', href: '/attendance/abuse', roles: ['hr_admin', 'manager', 'super_admin'] },
       ],
     },
     {
@@ -65,6 +66,7 @@ export default function Sidebar() {
         { label: 'Pengajuan Cuti', href: '/leave/request' },
         { label: 'Riwayat Cuti', href: '/leave/history' },
         { label: 'Kuota Cuti', href: '/leave/quota' },
+        { label: 'Kalender Cuti', href: '/leave/calendar' },
         { label: 'Persetujuan Cuti', href: '/leave/approvals', roles: ['hr_admin', 'manager', 'super_admin'] },
       ],
     },
@@ -95,6 +97,12 @@ export default function Sidebar() {
       label: 'Shift',
       icon: <Repeat className="h-5 w-5" />,
       href: '/shift',
+      children: [
+        { label: 'Manajemen Shift', href: '/shift' },
+        { label: 'Kalender Shift', href: '/shift/calendar' },
+        { label: 'Penugasan Shift', href: '/shift/assign', roles: ['hr_admin', 'manager', 'super_admin'] },
+        { label: 'Tukar Shift', href: '/shift/swap' },
+      ],
     },
     {
       label: 'Sosial',

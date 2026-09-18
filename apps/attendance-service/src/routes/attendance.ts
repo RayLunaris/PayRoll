@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, attendances, employees, workLocations, shifts, employeeShifts, eq, and, desc, sql, gte, lte } from '@payrollpro/db';
+import { db, attendances, employees, workLocations, shifts, employeeShifts, abuseLogs, eq, and, desc, sql, gte, lte } from '@payrollpro/db';
 import { getWIBDateString, getWIBTimeString, timeToMinutes } from '@payrollpro/shared-types';
 import { validateLocation } from '../services/gps.js';
 import { detectBuddyPunching, detectGPSSpoofing, detectAbnormalOvertime } from '../services/abuse-detection.js';
@@ -459,4 +459,74 @@ export async function attendanceRoutes(app: FastifyInstance) {
       return reply.status(500).send({ success: false, error: 'Internal server error' });
     }
   });
+
+  // Get abuse logs
+  app.get('/abuse-logs', {
+    preHandler: [app.authenticate, requireRole('super_admin', 'hr_admin')],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { severity, isResolved } = request.query as { severity?: string; isResolved?: string };
+      const conditions = [];
+
+      if (severity) {
+        conditions.push(eq(abuseLogs.severity, severity));
+      }
+      if (isResolved !== undefined) {
+        conditions.push(eq(abuseLogs.isResolved, isResolved === 'true'));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const logs = await db.select({
+        id: abuseLogs.id,
+        employeeId: abuseLogs.employeeId,
+        abuseType: abuseLogs.abuseType,
+        description: abuseLogs.description,
+        severity: abuseLogs.severity,
+        detectedAt: abuseLogs.detectedAt,
+        isResolved: abuseLogs.isResolved,
+        resolvedAt: abuseLogs.resolvedAt,
+        employeeName: employees.fullName,
+        employeeNip: employees.nip,
+      })
+      .from(abuseLogs)
+      .leftJoin(employees, eq(abuseLogs.employeeId, employees.id))
+      .where(whereClause)
+      .orderBy(desc(abuseLogs.detectedAt));
+
+      return reply.send({ success: true, data: logs });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // Resolve an abuse log
+  app.put('/abuse-logs/:id/resolve', {
+    preHandler: [app.authenticate, requireRole('super_admin', 'hr_admin')],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const user = request.user;
+
+      const updated = await db.update(abuseLogs)
+        .set({
+          isResolved: true,
+          resolvedBy: user.id,
+          resolvedAt: new Date(),
+        })
+        .where(eq(abuseLogs.id, id))
+        .returning();
+
+      if (updated.length === 0) {
+        return reply.status(404).send({ success: false, error: 'Abuse log not found' });
+      }
+
+      return reply.send({ success: true, data: updated[0] });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
 }
+

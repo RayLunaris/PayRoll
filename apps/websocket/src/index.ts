@@ -80,6 +80,17 @@ async function main() {
   const server = createServer();
   const wss = new WebSocketServer({ server });
 
+  server.on('request', (req, res) => {
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    if (url.pathname === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', service: 'websocket' }));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
   const subscriber = new Redis(REDIS_URL);
   await subscriber.subscribe(REDIS_CHANNEL);
   subscriber.on('message', (channel, message) => {

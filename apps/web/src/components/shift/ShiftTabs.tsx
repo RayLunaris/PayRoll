@@ -7,6 +7,7 @@ const tabs = [
   { label: 'Manajemen', href: '/shift' },
   { label: 'Kalender', href: '/shift/calendar' },
   { label: 'Penugasan', href: '/shift/assign' },
+  { label: 'Tukar Shift', href: '/shift/swap' },
 ];
 
 export default function ShiftTabs() {

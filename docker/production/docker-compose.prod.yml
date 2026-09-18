@@ -1,0 +1,428 @@
+services:
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: payrollpro-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - web
+      - api-gateway
+      - websocket
+    networks:
+      - payrollpro
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot
+    container_name: payrollpro-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - payrollpro
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../../
+      dockerfile: apps/web/Dockerfile
+    container_name: payrollpro-web
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_API_URL=https://${DOMAIN:-payroll.example.com}/api
+      - NEXT_PUBLIC_WS_URL=wss://${DOMAIN:-payroll.example.com}/ws
+    expose:
+      - "3000"
+    depends_on:
+      - api-gateway
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  api-gateway:
+    build:
+      context: ../../
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: payrollpro-api-gateway
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - CORS_ORIGIN=https://${DOMAIN:-payroll.example.com}
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_SERVICE_URL=http://auth-service:3010
+      - EMPLOYEE_SERVICE_URL=http://employee-service:3011
+      - PAYROLL_SERVICE_URL=http://payroll-service:3012
+      - ATTENDANCE_SERVICE_URL=http://attendance-service:3013
+      - LEAVE_SERVICE_URL=http://leave-service:3014
+      - SOCIAL_SERVICE_URL=http://social-service:3015
+      - SHIFT_SERVICE_URL=http://shift-service:3016
+    expose:
+      - "3001"
+    depends_on:
+      - auth-service
+      - employee-service
+      - payroll-service
+      - attendance-service
+      - leave-service
+      - social-service
+      - shift-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  websocket:
+    build:
+      context: ../../
+      dockerfile: apps/websocket/Dockerfile
+    container_name: payrollpro-websocket
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+    expose:
+      - "3002"
+    depends_on:
+      - redis
+      - social-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  auth-service:
+    build:
+      context: ../../
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: payrollpro-auth-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/payrollpro
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+    expose:
+      - "3010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  employee-service:
+    build:
+      context: ../../
+      dockerfile: apps/employee-service/Dockerfile
+    container_name: payrollpro-employee-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3011
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/payrollpro
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+    expose:
+      - "3011"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  payroll-service:
+    build:
+      context: ../../
+      dockerfile: apps/payroll-service/Dockerfile
+    container_name: payrollpro-payroll-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3012
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/payrollpro
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+    expose:
+      - "3012"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3012/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  attendance-service:
+    build:
+      context: ../../
+      dockerfile: apps/attendance-service/Dockerfile
+    container_name: payrollpro-attendance-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3013
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/payrollpro
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+    expose:
+      - "3013"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3013/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  leave-service:
+    build:
+      context: ../../
+      dockerfile: apps/leave-service/Dockerfile
+    container_name: payrollpro-leave-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3014
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/payrollpro
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+    expose:
+      - "3014"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3014/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  social-service:
+    build:
+      context: ../../
+      dockerfile: apps/social-service/Dockerfile
+    container_name: payrollpro-social-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3015
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/payrollpro
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - social_uploads:/app/uploads
+    expose:
+      - "3015"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3015/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  shift-service:
+    build:
+      context: ../../
+      dockerfile: apps/shift-service/Dockerfile
+    container_name: payrollpro-shift-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3016
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/payrollpro
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+    expose:
+      - "3016"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3016/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: payrollpro-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=payrollpro
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7-alpine
+    container_name: payrollpro-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  pgbackups:
+    image: prodrigestivill/postgres-backup-local
+    container_name: payrollpro-pgbackups
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=payrollpro
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - SCHEDULE=@daily
+      - BACKUP_DIR=/backups
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+      - HEALTHCHECK_PORT=8080
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      - postgres
+    networks:
+      - payrollpro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: payrollpro-watchtower
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 3 * * *
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - payrollpro
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  social_uploads:
+
+networks:
+  payrollpro:
+    driver: bridge

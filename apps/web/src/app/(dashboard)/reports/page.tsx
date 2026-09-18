@@ -112,6 +112,12 @@ export default function ReportsPage() {
       href: '/reports/attendance',
     },
     {
+      title: 'Laporan Cuti',
+      description: 'Rekap pengajuan dan pemakaian cuti karyawan per periode',
+      icon: CalendarDays,
+      href: '/reports/leave',
+    },
+    {
       title: 'Laporan Penggajian',
       description: 'Rekap gaji, potongan, dan total biaya payroll',
       icon: CreditCard,
