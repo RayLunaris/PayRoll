@@ -6,6 +6,9 @@ import { db, users, eq } from '@payrollpro/db';
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   try {
     await request.jwtVerify();
+    if ((request.user as any)?.type === 'refresh') {
+      return reply.status(401).send({ success: false, error: 'Unauthorized' });
+    }
   } catch (err) {
     return reply.status(401).send({ success: false, error: 'Unauthorized' });
   }

@@ -63,8 +63,11 @@ export async function processEmployeePayroll(
 
   const grossSalary = baseSalary + overtime.overtimePay + allowances;
 
-  // BPJS & PPh 21 (takes into account NPWP existence + PTKP marital status & dependents)
-  const bpjs = await calculateBPJS(grossSalary);
+  // BPJS (statutory calculation base: Gaji Pokok + Tunjangan Tetap, excluding overtime)
+  const bpjsBase = baseSalary + allowances;
+  const bpjs = await calculateBPJS(bpjsBase);
+
+  // PPh 21 (takes into account NPWP existence + PTKP marital status & dependents)
   const maritalPart = (emp.maritalStatus?.split('/')[0] || 'TK').toUpperCase() === 'K' ? 'K' : 'TK';
   const dependents = Math.min(Math.max(emp.dependents || 0, 0), 3);
   const ptkpStatus = `${maritalPart}/${dependents}`;

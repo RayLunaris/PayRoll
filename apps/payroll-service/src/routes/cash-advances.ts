@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, cashAdvances, employees, eq, and, desc, inArray } from '@payrollpro/db';
+import { db, cashAdvances, employees, positions, eq, and, desc, inArray } from '@payrollpro/db';
 
 const cashAdvanceSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
@@ -60,7 +60,13 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
       }
 
       const emp = (await db.select().from(employees).where(eq(employees.id, target.employeeId)).limit(1))[0];
-      const baseSalary = parseFloat(emp.baseSalary || '0');
+      let baseSalary = parseFloat(emp.baseSalary || '0');
+      if (baseSalary <= 0 && emp.positionId) {
+        const pos = await db.select().from(positions).where(eq(positions.id, emp.positionId)).limit(1);
+        if (pos.length > 0 && pos[0].baseSalary) {
+          baseSalary = parseFloat(pos[0].baseSalary);
+        }
+      }
 
       // Check cash advance limit (maximum 25% of base salary)
       const maxAdvance = baseSalary * 0.25;
@@ -154,7 +160,7 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
     }
   });
 
-  // Get all cash advances (HR / Admin)
+  // Get all cash advances (HR / Admin / Manager)
   app.get('/', {
     preHandler: [app.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -162,6 +168,22 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
       const user = request.user;
       if (!ADMIN_ROLES.includes(user.role)) {
         return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+      }
+
+      if (user.role === 'manager') {
+        const mgrEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (mgrEmp.length === 0 || !mgrEmp[0].departmentId) {
+          return reply.status(404).send({ success: false, error: 'Manager employee record or department not found' });
+        }
+        const deptEmps = await db.select({ id: employees.id }).from(employees)
+          .where(eq(employees.departmentId, mgrEmp[0].departmentId));
+        if (deptEmps.length === 0) {
+          return reply.send({ success: true, data: [] });
+        }
+        const data = await db.select().from(cashAdvances)
+          .where(inArray(cashAdvances.employeeId, deptEmps.map((e) => e.id)))
+          .orderBy(desc(cashAdvances.createdAt));
+        return reply.send({ success: true, data });
       }
 
       const data = await db.select().from(cashAdvances).orderBy(desc(cashAdvances.createdAt));
@@ -192,6 +214,23 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
 
       if (existing[0].status !== 'pending') {
         return reply.status(400).send({ success: false, error: 'Cash advance has already been processed' });
+      }
+
+      if (user.role === 'manager') {
+        if (!existing[0].employeeId) {
+          return reply.status(400).send({ success: false, error: 'Cash advance has no associated employee' });
+        }
+        const mgrEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (mgrEmp.length === 0 || !mgrEmp[0].departmentId) {
+          return reply.status(404).send({ success: false, error: 'Manager employee record or department not found' });
+        }
+        const targetEmp = await db.select({ departmentId: employees.departmentId })
+          .from(employees)
+          .where(eq(employees.id, existing[0].employeeId))
+          .limit(1);
+        if (targetEmp.length === 0 || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Can only manage cash advances from your own department' });
+        }
       }
 
       const updated = await db.update(cashAdvances)

@@ -81,15 +81,17 @@ async function resolveTargetEmployee(
   return null;
 }
 
-// Number of Mon-Fri days in an inclusive WIB date range.
+// Number of Mon-Fri days in an inclusive WIB date range (timezone-safe).
 function countWeekdays(rangeStart: string, rangeEnd: string): number {
   let count = 0;
-  const cursor = new Date(`${rangeStart}T00:00:00+07:00`);
-  const end = new Date(`${rangeEnd}T00:00:00+07:00`);
+  const [sy, sm, sd] = rangeStart.split('-').map(Number);
+  const [ey, em, ed] = rangeEnd.split('-').map(Number);
+  const cursor = new Date(Date.UTC(sy, sm - 1, sd));
+  const end = new Date(Date.UTC(ey, em - 1, ed));
   while (cursor <= end) {
-    const day = cursor.getDay();
+    const day = cursor.getUTCDay();
     if (day !== 0 && day !== 6) count++;
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return count;
 }
@@ -226,7 +228,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
         }
       }
 
-      // GPS spoofing detection: feed the last known check-in coordinates
+      // GPS spoofing detection: feed today's check-in coordinates
       // (oldest -> newest, including this one) into the rapid-jump detector.
       const recentCheckIns = await db.select({
         latitude: attendances.checkInLat,
@@ -235,6 +237,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
         .from(attendances)
         .where(and(
           eq(attendances.employeeId, emp.id),
+          eq(attendances.date, today),
           sql`${attendances.checkInLat} IS NOT NULL`,
           sql`${attendances.checkInLng} IS NOT NULL`
         ))
@@ -244,7 +247,9 @@ export async function attendanceRoutes(app: FastifyInstance) {
         .map((r) => ({ latitude: parseFloat(r.latitude!), longitude: parseFloat(r.longitude!) }))
         .reverse();
 
-      await detectGPSSpoofing(emp.id, checkInCoords);
+      if (checkInCoords.length >= 2) {
+        await detectGPSSpoofing(emp.id, checkInCoords);
+      }
 
       // Check for buddy punching
       await detectBuddyPunching(body.locationId, now);

@@ -81,20 +81,21 @@ export async function calculateOvertimePay(
       }
     }
 
+    const roundedPay = Math.round(pay);
     totalHours += hours;
-    totalPay += pay;
+    totalPay += roundedPay;
 
     detail.push({
       date: att.date,
       hours,
       rateMultiplier: effectiveMultiplier,
-      pay: Math.round(pay),
+      pay: roundedPay,
     });
   }
 
   return {
     totalHours: Math.round(totalHours * 100) / 100,
-    overtimePay: Math.round(totalPay),
+    overtimePay: totalPay,
     detail,
   };
 }

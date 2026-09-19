@@ -55,19 +55,30 @@ export async function detectBuddyPunching(
     ))
     .orderBy(desc(attendances.checkIn));
 
-  // Check for multiple check-ins in short time window
+  // Buddy punching is suspected when two DIFFERENT employees submit check-ins with
+  // virtually identical GPS coordinates (e.g. same device / mock location) within a short window.
   const suspiciousCheckIns = recentCheckIns.filter(a => {
-    if (!a.checkIn) return false;
+    if (!a.checkIn || !a.checkInLat || !a.checkInLng) return false;
     const checkIn = new Date(a.checkIn);
     return checkIn >= timeWindow && checkIn <= checkInTime;
   });
 
-  if (suspiciousCheckIns.length > 1) {
-    for (const checkIn of suspiciousCheckIns) {
+  const buddyPunchCandidates = suspiciousCheckIns.filter((a, idx) => {
+    return suspiciousCheckIns.some((b, bIdx) => {
+      if (idx === bIdx || a.employeeId === b.employeeId) return false;
+      const latDiff = Math.abs(parseFloat(a.checkInLat || '0') - parseFloat(b.checkInLat || '0'));
+      const lngDiff = Math.abs(parseFloat(a.checkInLng || '0') - parseFloat(b.checkInLng || '0'));
+      // ~0.00002 degrees is approximately 2 meters
+      return latDiff < 0.00002 && lngDiff < 0.00002;
+    });
+  });
+
+  if (buddyPunchCandidates.length > 1) {
+    for (const checkIn of buddyPunchCandidates) {
       await db.insert(abuseLogs).values({
         employeeId: checkIn.employeeId,
         abuseType: 'buddy_punching',
-        description: `Multiple check-ins detected at same location within ${thresholdMinutes} minutes`,
+        description: `Identical GPS coordinates detected between different employees within ${thresholdMinutes} minutes`,
         severity: 'medium',
       });
     }
@@ -76,7 +87,7 @@ export async function detectBuddyPunching(
       detected: true,
       type: 'buddy_punching',
       severity: 'medium',
-      description: 'Potential buddy punching detected',
+      description: 'Potential buddy punching detected (identical GPS coordinates)',
     };
   }
 

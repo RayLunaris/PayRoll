@@ -31,6 +31,9 @@ export async function buildApp() {
   app.decorate('authenticate', async (request: any, reply: any) => {
     try {
       await request.jwtVerify();
+      if (request.user?.type === 'refresh') {
+        return reply.status(401).send({ success: false, error: 'Unauthorized' });
+      }
     } catch (err) {
       return reply.status(401).send({ success: false, error: 'Unauthorized' });
     }

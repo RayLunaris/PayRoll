@@ -14,7 +14,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
-const ALLOWED_ROLES: UserRole[] = ['hr_admin', 'super_admin'];
+const ALLOWED_ROLES: UserRole[] = ['hr_admin', 'super_admin', 'manager'];
 
 const MONTH_NAMES_ID = [
   'Januari',

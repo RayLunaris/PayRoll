@@ -33,6 +33,15 @@ export async function buildApp() {
   app.decorate('authenticate', async (request: any, reply: any) => {
     try {
       await request.jwtVerify();
+      if (request.user?.type === 'refresh') {
+        return reply.status(401).send({
+          success: false,
+          statusCode: 401,
+          error: 'Unauthorized',
+          message: 'Invalid token type for API access',
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (err: any) {
       return reply.status(401).send({
         success: false,
