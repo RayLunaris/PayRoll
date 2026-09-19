@@ -71,6 +71,8 @@ export default function Header() {
           {/* Messages */}
           <Link
             href="/social/messages"
+            aria-label="Pesan"
+            title="Pesan"
             className="relative rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100"
           >
             <MessageCircle className="h-5 w-5" />
@@ -80,6 +82,8 @@ export default function Header() {
           {/* Notifications */}
           <Link
             href="/notifications"
+            aria-label="Notifikasi"
+            title="Notifikasi"
             className="relative rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100"
           >
             <Bell className="h-5 w-5" />
@@ -90,6 +94,8 @@ export default function Header() {
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setShowDropdown(!showDropdown)}
+              aria-label="Menu akun"
+              aria-expanded={showDropdown}
               className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-gray-100"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600">
@@ -108,12 +114,6 @@ export default function Header() {
 
             {showDropdown && (
               <div className="absolute right-0 z-50 mt-2 w-48 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                <Link
-                  href="/profile"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  Profil Saya
-                </Link>
                 <Link
                   href="/settings"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"

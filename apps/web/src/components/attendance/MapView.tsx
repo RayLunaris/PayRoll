@@ -18,7 +18,15 @@ function MapViewInner({ userLocation, workLocations }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstanceRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userMarkerRef = useRef<any>(null);
+  const locationsAddedRef = useRef(false);
+  const userLocationRef = useRef(userLocation);
+  userLocationRef.current = userLocation;
 
+  // Create the map exactly once. GPS fixes stream in via watchPosition and the
+  // location list loads on a separate request, so both are handled by their own
+  // effects below instead of tearing the map down on every position tick.
   useEffect(() => {
     let isMounted = true;
 
@@ -26,17 +34,82 @@ function MapViewInner({ userLocation, workLocations }: MapViewProps) {
       if (!mapRef.current || mapInstanceRef.current) return;
 
       const L = (await import('leaflet')).default;
+      if (!isMounted || !mapRef.current || mapInstanceRef.current) return;
 
-      const defaultCenter: [number, number] = userLocation
-        ? [userLocation.lat, userLocation.lng]
+      const start = userLocationRef.current;
+      const defaultCenter: [number, number] = start
+        ? [start.lat, start.lng]
         : [-6.2088, 106.8456];
 
-      const map = L.map(mapRef.current).setView(defaultCenter, userLocation ? 15 : 13);
+      const map = L.map(mapRef.current).setView(defaultCenter, start ? 15 : 13);
       mapInstanceRef.current = map;
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
       }).addTo(map);
+
+      if (start) {
+        const userIcon = L.divIcon({
+          className: 'user-pin-icon',
+          html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 4px rgba(239,68,68,0.35);"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        });
+
+        userMarkerRef.current = L.marker([start.lat, start.lng], { icon: userIcon })
+          .addTo(map)
+          .bindPopup('<strong>Lokasi Anda</strong>');
+      }
+    };
+
+    initMap();
+
+    return () => {
+      isMounted = false;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+      userMarkerRef.current = null;
+      locationsAddedRef.current = false;
+    };
+  }, []);
+
+  // Keep the user marker in sync with GPS fixes without rebuilding the map.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !userLocation) return;
+
+    const updateUserMarker = async () => {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
+        return;
+      }
+      const L = (await import('leaflet')).default;
+      if (!mapInstanceRef.current) return;
+      const userIcon = L.divIcon({
+        className: 'user-pin-icon',
+        html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 4px rgba(239,68,68,0.35);"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
+        .addTo(map)
+        .bindPopup('<strong>Lokasi Anda</strong>');
+    };
+
+    void updateUserMarker();
+  }, [userLocation]);
+
+  // Draw work-location circles and pins once the (late-loaded) list arrives.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || workLocations.length === 0 || locationsAddedRef.current) return;
+
+    const addLocations = async () => {
+      const L = (await import('leaflet')).default;
+      if (!mapInstanceRef.current || locationsAddedRef.current) return;
+      locationsAddedRef.current = true;
 
       // Custom office icon to avoid broken image asset in Next.js Leaflet bundling
       const officeIcon = L.divIcon({
@@ -67,33 +140,10 @@ function MapViewInner({ userLocation, workLocations }: MapViewProps) {
           .addTo(map)
           .bindPopup(`<strong>${loc.name}</strong>`);
       });
-
-      if (userLocation) {
-        const userIcon = L.divIcon({
-          className: 'user-pin-icon',
-          html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 4px rgba(239,68,68,0.35);"></div>',
-          iconSize: [16, 16],
-          iconAnchor: [8, 8],
-        });
-
-        L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
-          .addTo(map)
-          .bindPopup('<strong>Lokasi Anda</strong>');
-      }
     };
 
-    if (isMounted) {
-      initMap();
-    }
-
-    return () => {
-      isMounted = false;
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, [userLocation, workLocations]);
+    void addLocations();
+  }, [workLocations]);
 
   return (
     <div className="rounded-lg overflow-hidden border border-gray-200">

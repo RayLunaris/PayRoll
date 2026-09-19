@@ -162,6 +162,8 @@ export default function Sidebar() {
             <div key={item.href}>
               <Link
                 href={item.href}
+                title={item.label}
+                aria-label={item.label}
                 className={`
                   flex items-center gap-3 rounded-lg px-3 py-2 transition-colors
                   ${isActive(item.href)

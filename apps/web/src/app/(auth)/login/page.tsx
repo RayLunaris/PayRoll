@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useForm } from 'react-hook-form'
@@ -20,6 +20,17 @@ export default function LoginPage() {
   const login = useAuthStore((state) => state.login)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [registered, setRegistered] = useState(false)
+
+  // Registration confirmation banner (?registered=true). Deferred so setState
+  // is never called synchronously in the effect body.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search)
+      setRegistered(params.get('registered') === 'true')
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const {
     register,
@@ -51,6 +62,12 @@ export default function LoginPage() {
       <h2 className="mb-6 text-center text-2xl font-bold text-gray-900">
         Masuk ke Akun Anda
       </h2>
+
+      {registered && (
+        <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
+          Pendaftaran berhasil! Silakan masuk dengan akun Anda.
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">

@@ -36,12 +36,17 @@ function formatTime(date: string): string {
 
 export default function CheckInPage() {
   const [gpsPosition, setGpsPosition] = useState<GeolocationPosition | null>(null);
+  const [gpsError, setGpsError] = useState('');
   const [workLocations, setWorkLocations] = useState<WorkLocation[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(true);
+  const [locationsError, setLocationsError] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
+  const [attendanceError, setAttendanceError] = useState('');
 
   // Continuously track GPS so the position stays fresh while the employee is
   // at the work location — one-shot lookups can return stale/imprecise fixes.
@@ -50,45 +55,73 @@ export default function CheckInPage() {
       // Schedule state update asynchronously to avoid triggering the lint rule
       // for synchronous setState in effect bodies.
       Promise.resolve().then(() =>
-        setError('Perangkat tidak mendukung GPS.'),
+        setGpsError('Perangkat tidak mendukung GPS.'),
       );
       return;
     }
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setGpsPosition(pos);
-        setError('');
+        setGpsError('');
       },
       () => {
-        setError('Tidak dapat mengakses lokasi. Mohon izinkan akses GPS.');
+        setGpsError('Tidak dapat mengakses lokasi. Mohon izinkan akses GPS.');
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 1000 },
     );
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
-  // Fetch available work locations
-  useEffect(() => {
-    // Deferred to avoid the react-hooks/set-state-in-effect rule.
-    const timer = window.setTimeout(() => {
-      api
-        .get<{ data: WorkLocation[] }>('/locations')
-        .then((res) => setWorkLocations(res.data.data))
-        .catch((err) => console.error('Failed to fetch locations:', err));
-    }, 0);
-    return () => window.clearTimeout(timer);
+  const retryGps = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGpsError('Perangkat tidak mendukung GPS.');
+      return;
+    }
+    setGpsError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsPosition(pos);
+        setGpsError('');
+      },
+      () => {
+        setGpsError('Tidak dapat mengakses lokasi. Mohon izinkan akses GPS.');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 1000 },
+    );
   }, []);
 
-  // Fetch today's attendance status
+  // Fetch available work locations (with retry on failure)
+  const loadLocations = useCallback(() => {
+    setLocationsLoading(true);
+    setLocationsError('');
+    api
+      .get<{ data: WorkLocation[] }>('/locations')
+      .then((res) => setWorkLocations(res.data.data))
+      .catch(() => setLocationsError('Gagal memuat daftar lokasi kerja.'))
+      .finally(() => setLocationsLoading(false));
+  }, []);
+
+  // Deferred so setState is never called synchronously in the effect body
+  // (satisfies react-hooks/set-state-in-effect).
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadLocations(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadLocations]);
+
+  // Fetch today's attendance status (with retry on failure)
   const fetchTodayAttendance = useCallback(() => {
+    setAttendanceLoading(true);
+    setAttendanceError('');
     api
       .get<{ data: AttendanceRecord | null }>('/attendance/today')
       .then((res) => setTodayAttendance(res.data.data))
-      .catch((err) => console.error('Failed to fetch today attendance:', err));
+      .catch(() => setAttendanceError('Gagal memuat status kehadiran hari ini.'))
+      .finally(() => setAttendanceLoading(false));
   }, []);
 
   useEffect(() => {
-    fetchTodayAttendance();
+    const timer = window.setTimeout(() => void fetchTodayAttendance(), 0);
+    return () => window.clearTimeout(timer);
   }, [fetchTodayAttendance]);
 
   const handleCheckIn = async () => {
@@ -184,6 +217,28 @@ export default function CheckInPage() {
               </div>
             </div>
           )}
+
+          {!gpsPosition && (
+            <div className="mt-4 flex items-center gap-2 p-3 bg-yellow-50 rounded-lg">
+              <MapPin className="h-5 w-5 text-yellow-600" />
+              <div>
+                <p className="text-sm font-medium text-yellow-900">
+                  {gpsError || 'Menunggu izin akses lokasi...'}
+                </p>
+                <p className="text-xs text-yellow-600">
+                  GPS akan digunakan untuk verifikasi presensi Anda
+                </p>
+                {gpsError && (
+                  <button
+                    onClick={retryGps}
+                    className="mt-1 text-xs font-medium text-yellow-700 underline"
+                  >
+                    Coba lagi
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Section */}
@@ -191,7 +246,21 @@ export default function CheckInPage() {
           <div className="card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Status Hari Ini</h3>
 
-            {todayAttendance ? (
+            {attendanceLoading && !todayAttendance ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              </div>
+            ) : attendanceError && !todayAttendance ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-gray-600">{attendanceError}</p>
+                <button
+                  onClick={() => void fetchTodayAttendance()}
+                  className="btn btn-secondary mt-4"
+                >
+                  Coba lagi
+                </button>
+              </div>
+            ) : todayAttendance ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-lg">
                   <CheckCircle className="h-6 w-6 text-emerald-600" />
@@ -233,32 +302,41 @@ export default function CheckInPage() {
               <div className="space-y-4">
                 <div>
                   <label className="label">Pilih Lokasi Kerja</label>
-                  <select
-                    value={selectedLocation}
-                    onChange={(e) => setSelectedLocation(e.target.value)}
-                    className="input"
-                  >
-                    <option value="">Pilih lokasi...</option>
-                    {workLocations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name} ({loc.radiusMeters}m)
-                      </option>
-                    ))}
-                  </select>
+                  {locationsLoading ? (
+                    <div className="py-2 text-sm text-gray-500">Memuat lokasi kerja...</div>
+                  ) : locationsError ? (
+                    <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 p-3">
+                      <p className="text-sm text-red-700">{locationsError}</p>
+                      <button
+                        onClick={() => void loadLocations()}
+                        className="shrink-0 text-sm font-medium text-red-700 underline"
+                      >
+                        Coba lagi
+                      </button>
+                    </div>
+                  ) : workLocations.length === 0 ? (
+                    <div className="py-2 text-sm text-gray-500">
+                      Belum ada lokasi kerja terdaftar. Hubungi admin.
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedLocation}
+                      onChange={(e) => setSelectedLocation(e.target.value)}
+                      className="input"
+                    >
+                      <option value="">Pilih lokasi...</option>
+                      {workLocations.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name} ({loc.radiusMeters}m)
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-
-                {!gpsPosition && (
-                  <div className="flex items-center gap-2 p-3 bg-yellow-50 rounded-lg">
-                    <MapPin className="h-5 w-5 text-yellow-600" />
-                    <p className="text-sm text-yellow-800">
-                      Mohon izinkan akses lokasi untuk check-in
-                    </p>
-                  </div>
-                )}
 
                 <button
                   onClick={handleCheckIn}
-                  disabled={isSubmitting || !gpsPosition}
+                  disabled={isSubmitting || !gpsPosition || locationsLoading || !!locationsError}
                   className="btn btn-primary w-full py-4 text-base"
                 >
                   {isSubmitting ? 'Memproses...' : 'Check-in Sekarang'}

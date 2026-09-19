@@ -82,11 +82,13 @@ export default function AttendanceHistoryPage() {
 
   const handleFilter = async () => {
     setLoading(true);
+    setError('');
     try {
       const data = await loadAttendanceHistory(startDate, endDate);
       setHistory(data);
     } catch (err) {
       console.error('Failed to fetch attendance history:', err);
+      setError('Gagal memuat data filter. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
