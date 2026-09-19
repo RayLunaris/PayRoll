@@ -43,8 +43,8 @@ export default function CheckInPage() {
   const [success, setSuccess] = useState('');
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
 
-  // Request GPS access — any state update here must be inside async callbacks,
-  // not in the synchronous effect body, to satisfy react-hooks/set-state-in-effect.
+  // Continuously track GPS so the position stays fresh while the employee is
+  // at the work location — one-shot lookups can return stale/imprecise fixes.
   useEffect(() => {
     if (!navigator.geolocation) {
       // Schedule state update asynchronously to avoid triggering the lint rule
@@ -54,7 +54,7 @@ export default function CheckInPage() {
       );
       return;
     }
-    navigator.geolocation.getCurrentPosition(
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setGpsPosition(pos);
         setError('');
@@ -62,7 +62,9 @@ export default function CheckInPage() {
       () => {
         setError('Tidak dapat mengakses lokasi. Mohon izinkan akses GPS.');
       },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 1000 },
     );
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   // Fetch available work locations
@@ -176,7 +178,8 @@ export default function CheckInPage() {
                 <p className="text-sm font-medium text-blue-900">Lokasi terdeteksi</p>
                 <p className="text-xs text-blue-600">
                   {gpsPosition.coords.latitude.toFixed(6)},{' '}
-                  {gpsPosition.coords.longitude.toFixed(6)}
+                  {gpsPosition.coords.longitude.toFixed(6)} (akurasi ±
+                  {Math.round(gpsPosition.coords.accuracy)}m)
                 </p>
               </div>
             </div>

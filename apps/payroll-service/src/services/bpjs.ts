@@ -21,22 +21,24 @@ export async function calculateBPJS(grossSalary: number): Promise<{
     // Apply max salary cap if exists
     const salaryBase = config.maxSalaryCap ? Math.min(grossSalary, parseFloat(config.maxSalaryCap)) : grossSalary;
 
-    const employeeAmount = salaryBase * (parseFloat(config.employeeRate) / 100);
-    const employerAmount = salaryBase * (parseFloat(config.employerRate) / 100);
+    // Round each component; totals are the SUM of the rounded values so the
+    // breakdown lines and the grand total always reconcile exactly.
+    const employeeAmount = Math.round(salaryBase * (parseFloat(config.employeeRate) / 100));
+    const employerAmount = Math.round(salaryBase * (parseFloat(config.employerRate) / 100));
 
     totalEmployee += employeeAmount;
     totalEmployer += employerAmount;
 
     detail.push({
       component: config.component,
-      employeeAmount: Math.round(employeeAmount),
-      employerAmount: Math.round(employerAmount),
+      employeeAmount,
+      employerAmount,
     });
   }
 
   return {
     detail,
-    totalEmployee: Math.round(totalEmployee),
-    totalEmployer: Math.round(totalEmployer),
+    totalEmployee,
+    totalEmployer,
   };
 }

@@ -233,6 +233,18 @@ export async function shiftRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'Employee not found' });
       }
 
+      // Department scoping: managers may only assign shifts to employees of
+      // their own department.
+      if (user.role === 'manager') {
+        const mgrEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (mgrEmp.length === 0 || !mgrEmp[0].departmentId) {
+          return reply.status(404).send({ success: false, error: 'Manager employee record or department not found' });
+        }
+        if (emp[0].departmentId !== mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Can only assign shifts to employees from your own department' });
+        }
+      }
+
       // Verify shift exists
       const shift = await db.select().from(shifts).where(eq(shifts.id, body.shiftId)).limit(1);
       if (shift.length === 0) {

@@ -7,6 +7,10 @@ import { authRoutes } from './routes/auth.js';
 import { registerAuthMiddleware } from './middleware/auth.js';
 
 export async function buildApp() {
+  const JWT_SECRET = process.env.JWT_SECRET;
+  if (!JWT_SECRET) {
+    throw new Error('Missing required environment variable: JWT_SECRET');
+  }
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   });
@@ -18,7 +22,7 @@ export async function buildApp() {
   });
 
   await app.register(jwt, {
-    secret: process.env.JWT_SECRET || 'your-super-secret-key-change-in-production',
+    secret: JWT_SECRET,
   });
 
   await app.register(rateLimit, {

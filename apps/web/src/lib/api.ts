@@ -44,7 +44,15 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Never attempt a refresh for a request that opted out (e.g. the logout
+    // call in stores/auth.ts, which is authenticated by the now-cleared store
+    // token). Retrying it against /auth/refresh would re-enter logout() and
+    // race the recursion.
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !(originalRequest as { _skipAuthRefresh?: boolean })._skipAuthRefresh
+    ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })

@@ -1,4 +1,4 @@
-import { db, employees, positions, payrolls, cashAdvances, eq, and, or } from '@payrollpro/db';
+import { db, employees, positions, payrolls, cashAdvances, eq, and, or, inArray } from '@payrollpro/db';
 import { calculateBPJS } from './bpjs.js';
 import { calculatePPh21 } from './tax.js';
 import { calculateOvertimePay } from './overtime.js';
@@ -45,7 +45,9 @@ export async function processEmployeePayroll(
   }
 
   if (baseSalary <= 0) {
-    baseSalary = 5000000; // Sensible minimum wage fallback
+    // Never silently pay the minimum-wage fallback: wrong money amount.
+    // Fail loudly so the missing base salary is configured properly.
+    throw new Error(`Employee ${employeeId} has no base salary configured (employee or position record)`);
   }
 
   // Dynamic end date
@@ -94,25 +96,27 @@ export async function processEmployeePayroll(
     )
   );
 
-  // Check if payroll already exists for this period
-  const existingPayroll = await db.select().from(payrolls)
-    .where(and(
-      eq(payrolls.employeeId, employeeId),
-      eq(payrolls.periodMonth, month),
-      eq(payrolls.periodYear, year)
-    ))
-    .limit(1);
-
-  // Period Lock: Cannot reprocess if already paid
-  if (existingPayroll.length > 0 && existingPayroll[0].status === 'paid') {
-    throw new Error(`Payroll for period ${month}/${year} has already been marked as paid and cannot be reprocessed`);
-  }
-
+  // Period lock: the "already paid" check and the upsert run INSIDE the same
+  // transaction under a FOR UPDATE row lock. Checking outside the transaction
+  // was a TOCTOU: two concurrent runs for the same period both passed the
+  // check and both wrote, and a paid run could race a processed rerun.
   let payrollId: string;
 
-  // Database transaction for payroll and cash advance updates
   await db.transaction(async (tx) => {
-    if (existingPayroll.length > 0) {
+    const existing = await tx.select().from(payrolls)
+      .where(and(
+        eq(payrolls.employeeId, employeeId),
+        eq(payrolls.periodMonth, month),
+        eq(payrolls.periodYear, year)
+      ))
+      .for('update')
+      .limit(1);
+
+    if (existing.length > 0 && existing[0].status === 'paid') {
+      throw new Error(`Payroll for period ${month}/${year} has already been marked as paid and cannot be reprocessed`);
+    }
+
+    if (existing.length > 0) {
       const updated = await tx.update(payrolls)
         .set({
           baseSalary: baseSalary.toFixed(2),
@@ -127,7 +131,7 @@ export async function processEmployeePayroll(
           status: 'processed',
           updatedAt: new Date(),
         })
-        .where(eq(payrolls.id, existingPayroll[0].id))
+        .where(eq(payrolls.id, existing[0].id))
         .returning();
       payrollId = updated[0].id;
     } else {
@@ -178,9 +182,12 @@ export async function processEmployeePayroll(
   };
 }
 
-// Process payroll for all active employees
-export async function processAllPayrolls(month: number, year: number): Promise<PayrollResult[]> {
-  const allEmployees = await db.select().from(employees).where(eq(employees.isActive, true));
+// Process payroll for all active employees (optionally restricted to a subset,
+// e.g. a manager's own department)
+export async function processAllPayrolls(month: number, year: number, employeeIds?: string[]): Promise<PayrollResult[]> {
+  const allEmployees = employeeIds && employeeIds.length > 0
+    ? await db.select().from(employees).where(and(eq(employees.isActive, true), inArray(employees.id, employeeIds)))
+    : await db.select().from(employees).where(eq(employees.isActive, true));
   const results: PayrollResult[] = [];
 
   for (const emp of allEmployees) {

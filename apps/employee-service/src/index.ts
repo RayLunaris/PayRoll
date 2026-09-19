@@ -2,12 +2,17 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import './types/index.js';
+import { db, users, eq } from '@payrollpro/db';
 import { employeeRoutes } from './routes/employees.js';
 import { departmentRoutes } from './routes/departments.js';
 import { positionRoutes } from './routes/positions.js';
 import { locationRoutes } from './routes/locations.js';
 
 export async function buildApp() {
+  const JWT_SECRET = process.env.JWT_SECRET;
+  if (!JWT_SECRET) {
+    throw new Error('Missing required environment variable: JWT_SECRET');
+  }
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   });
@@ -19,7 +24,7 @@ export async function buildApp() {
   });
 
   await app.register(jwt, {
-    secret: process.env.JWT_SECRET || 'your-super-secret-key-change-in-production',
+    secret: JWT_SECRET,
   });
 
   // Add authenticate decorator
@@ -27,6 +32,12 @@ export async function buildApp() {
     try {
       await request.jwtVerify();
     } catch (err) {
+      return reply.status(401).send({ success: false, error: 'Unauthorized' });
+    }
+
+    // Lock out deactivated accounts immediately, even with a valid token.
+    const storedUser = await db.select({ isActive: users.isActive }).from(users).where(eq(users.id, request.user.id)).limit(1);
+    if (storedUser.length === 0 || !storedUser[0].isActive) {
       return reply.status(401).send({ success: false, error: 'Unauthorized' });
     }
   });

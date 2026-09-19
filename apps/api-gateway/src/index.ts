@@ -9,6 +9,10 @@ import { registerProxy } from './plugins/proxy.js';
 import { docsRoutes } from './routes/docs.js';
 
 export async function buildApp() {
+  const JWT_SECRET = process.env.JWT_SECRET;
+  if (!JWT_SECRET) {
+    throw new Error('Missing required environment variable: JWT_SECRET');
+  }
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   });
@@ -22,7 +26,7 @@ export async function buildApp() {
 
   // 2. JWT Configuration
   await app.register(jwt, {
-    secret: process.env.JWT_SECRET || 'your-super-secret-key-change-in-production',
+    secret: JWT_SECRET,
   });
 
   // 3. Authenticate decorator for Edge JWT verification

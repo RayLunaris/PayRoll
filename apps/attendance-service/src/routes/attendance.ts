@@ -81,6 +81,22 @@ async function resolveTargetEmployee(
   return null;
 }
 
+// Number of Mon-Fri days in an inclusive WIB date range.
+function countWeekdays(rangeStart: string, rangeEnd: string): number {
+  let count = 0;
+  const cursor = new Date(`${rangeStart}T00:00:00+07:00`);
+  const end = new Date(`${rangeEnd}T00:00:00+07:00`);
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+// Overtime only counts after this many minutes past the shift end time.
+const OVERTIME_GRACE_MINUTES = parseInt(process.env.OVERTIME_GRACE_MINUTES || '15', 10);
+
 export async function attendanceRoutes(app: FastifyInstance) {
   // Check in with GPS
   app.post('/check-in', {
@@ -210,6 +226,26 @@ export async function attendanceRoutes(app: FastifyInstance) {
         }
       }
 
+      // GPS spoofing detection: feed the last known check-in coordinates
+      // (oldest -> newest, including this one) into the rapid-jump detector.
+      const recentCheckIns = await db.select({
+        latitude: attendances.checkInLat,
+        longitude: attendances.checkInLng,
+      })
+        .from(attendances)
+        .where(and(
+          eq(attendances.employeeId, emp.id),
+          sql`${attendances.checkInLat} IS NOT NULL`,
+          sql`${attendances.checkInLng} IS NOT NULL`
+        ))
+        .orderBy(desc(attendances.checkIn))
+        .limit(10);
+      const checkInCoords = recentCheckIns
+        .map((r) => ({ latitude: parseFloat(r.latitude!), longitude: parseFloat(r.longitude!) }))
+        .reverse();
+
+      await detectGPSSpoofing(emp.id, checkInCoords);
+
       // Check for buddy punching
       await detectBuddyPunching(body.locationId, now);
 
@@ -273,6 +309,31 @@ export async function attendanceRoutes(app: FastifyInstance) {
         return reply.status(400).send({ success: false, error: 'Already checked out today' });
       }
 
+      // Location validation mirrors check-in: the check-out coordinates must be
+      // within the radius of the work location that was used at check-in.
+      if (!attendance[0].locationId) {
+        return reply.status(400).send({ success: false, error: 'Check-in work location not found' });
+      }
+      const checkOutLocation = await db.select().from(workLocations)
+        .where(eq(workLocations.id, attendance[0].locationId))
+        .limit(1);
+      if (checkOutLocation.length === 0) {
+        return reply.status(400).send({ success: false, error: 'Check-in work location not found' });
+      }
+      const checkoutValidation = validateLocation(
+        { latitude: body.latitude, longitude: body.longitude },
+        { latitude: parseFloat(checkOutLocation[0].latitude), longitude: parseFloat(checkOutLocation[0].longitude) },
+        checkOutLocation[0].radiusMeters || 100
+      );
+      if (!checkoutValidation.isInside) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Outside work area',
+          distance: checkoutValidation.distance,
+          radius: checkoutValidation.radius,
+        });
+      }
+
       // Calculate overtime hours using WIB shift end
       let overtimeHours = 0;
       const todayShift = await db.select().from(employeeShifts)
@@ -290,8 +351,9 @@ export async function attendanceRoutes(app: FastifyInstance) {
           const currentWibMinutes = timeToMinutes(getWIBTimeString());
           const shiftEndMinutes = timeToMinutes(shiftRecord[0].endTime);
 
-          if (currentWibMinutes > shiftEndMinutes) {
-            overtimeHours = (currentWibMinutes - shiftEndMinutes) / 60;
+          // Count overtime only past the grace window past the shift end.
+          if (currentWibMinutes > shiftEndMinutes + OVERTIME_GRACE_MINUTES) {
+            overtimeHours = (currentWibMinutes - shiftEndMinutes - OVERTIME_GRACE_MINUTES) / 60;
           }
         }
       }
@@ -432,20 +494,73 @@ export async function attendanceRoutes(app: FastifyInstance) {
 
       const data = await db.select({
         employeeId: attendances.employeeId,
-        totalDays: sql<number>`count(*)::int`,
-        presentDays: sql<number>`count(case when ${attendances.status} = 'present' then 1 end)::int`,
-        lateDays: sql<number>`count(case when ${attendances.status} = 'late' then 1 end)::int`,
-        absentDays: sql<number>`count(case when ${attendances.status} = 'absent' then 1 end)::int`,
-        totalOvertime: sql<number>`coalesce(sum(${attendances.overtimeHours}), 0)::float`,
+        date: attendances.date,
+        status: attendances.status,
+        overtimeHours: attendances.overtimeHours,
       })
       .from(attendances)
       .where(and(
         gte(attendances.date, startDate),
         lte(attendances.date, endDate)
-      ))
-      .groupBy(attendances.employeeId);
+      ));
 
-      return reply.send({ success: true, data });
+      // Scheduled working days per employee come from real shift assignments.
+      const shiftDays = await db.select({
+        employeeId: employeeShifts.employeeId,
+        date: employeeShifts.date,
+      })
+      .from(employeeShifts)
+      .where(and(
+        gte(employeeShifts.date, startDate),
+        lte(employeeShifts.date, endDate)
+      ));
+
+      const shiftSets = new Map<string, Set<string>>();
+      for (const sd of shiftDays) {
+        if (!sd.employeeId || !sd.date) continue;
+        if (!shiftSets.has(sd.employeeId)) shiftSets.set(sd.employeeId, new Set());
+        shiftSets.get(sd.employeeId)!.add(sd.date);
+      }
+
+      // Weekday count fallback when the employee has no shift schedule.
+      const totalWeekdays = countWeekdays(startDate, endDate);
+
+      const report = new Map<string, {
+        totalDays: number;
+        presentDays: number;
+        lateDays: number;
+        absentDays: number;
+        totalOvertime: number;
+      }>();
+
+      const attendedDays = new Map<string, Set<string>>();
+      for (const row of data) {
+        if (!row.employeeId || !row.date) continue;
+        let entry = report.get(row.employeeId);
+        if (!entry) {
+          entry = { totalDays: 0, presentDays: 0, lateDays: 0, absentDays: 0, totalOvertime: 0 };
+          report.set(row.employeeId, entry);
+        }
+        if (!attendedDays.has(row.employeeId)) attendedDays.set(row.employeeId, new Set());
+        attendedDays.get(row.employeeId)!.add(row.date);
+
+        if (row.status === 'present') entry.presentDays++;
+        if (row.status === 'late') entry.lateDays++;
+        entry.totalOvertime += parseFloat(row.overtimeHours || '0');
+      }
+
+      const result = [];
+      for (const [employeeId, entry] of report) {
+        const scheduled = shiftSets.get(employeeId)?.size ?? 0;
+        const workDays = scheduled > 0 ? scheduled : totalWeekdays;
+        const attended = attendedDays.get(employeeId)?.size ?? 0;
+        entry.totalDays = workDays;
+        entry.absentDays = Math.max(0, workDays - attended);
+        entry.totalOvertime = Math.round(entry.totalOvertime * 100) / 100;
+        result.push({ employeeId, ...entry });
+      }
+
+      return reply.send({ success: true, data: result });
     } catch (error) {
       app.log.error(error);
       return reply.status(500).send({ success: false, error: 'Internal server error' });

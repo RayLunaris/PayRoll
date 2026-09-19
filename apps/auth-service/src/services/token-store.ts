@@ -163,3 +163,82 @@ export async function revokeAllUserTokens(userId: string): Promise<void> {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Per-account login lockout (anti brute-force). IP-level rate limiting handles
+// distributed attempts; this protects a single known account.
+// ---------------------------------------------------------------------------
+
+export const MAX_LOGIN_ATTEMPTS = 5;
+export const LOGIN_LOCK_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+interface LockRecord {
+  count: number;
+  lockedUntil: number;
+}
+
+const lockStore = new Map<string, LockRecord>();
+
+function lockKey(email: string): string {
+  return `lock:${email.toLowerCase().trim()}`;
+}
+
+function mirrorLock(key: string, rec: LockRecord): void {
+  if (redisAvailable && redisClient) {
+    redisClient.setex(key, Math.ceil(LOGIN_LOCK_WINDOW_MS / 1000), JSON.stringify(rec)).catch(() => undefined);
+  }
+}
+
+async function readLock(key: string): Promise<LockRecord | undefined> {
+  const mem = lockStore.get(key);
+  if (mem && (!mem.lockedUntil || Date.now() < mem.lockedUntil)) {
+    return mem;
+  }
+  if (mem && mem.lockedUntil && Date.now() >= mem.lockedUntil) {
+    lockStore.delete(key);
+  }
+  if (redisAvailable && redisClient) {
+    try {
+      const raw = await redisClient.get(key);
+      if (raw) {
+        const rec = JSON.parse(raw) as LockRecord;
+        if (rec.lockedUntil && Date.now() < rec.lockedUntil) {
+          return rec;
+        }
+      }
+    } catch (err) {
+      // Fall back to the in-memory copy.
+    }
+  }
+  return undefined;
+}
+
+// Called after every failed login attempt (including "user not found" so the
+// endpoint does not leak which accounts exist).
+export async function recordFailedLogin(email: string): Promise<void> {
+  const key = lockKey(email);
+  const now = Date.now();
+  const cur = await readLock(key);
+  const rec: LockRecord = !cur
+    ? { count: 1, lockedUntil: 0 }
+    : { count: cur.count + 1, lockedUntil: cur.count + 1 >= MAX_LOGIN_ATTEMPTS ? now + LOGIN_LOCK_WINDOW_MS : 0 };
+  lockStore.set(key, rec);
+  mirrorLock(key, rec);
+}
+
+export async function isLoginLocked(email: string): Promise<boolean> {
+  const rec = await readLock(lockKey(email));
+  return !!rec && rec.lockedUntil > Date.now();
+}
+
+export async function clearLoginLockout(email: string): Promise<void> {
+  const key = lockKey(email);
+  lockStore.delete(key);
+  if (redisAvailable && redisClient) {
+    try {
+      await redisClient.del(key);
+    } catch (err) {
+      // Memory copy is already cleared.
+    }
+  }
+}

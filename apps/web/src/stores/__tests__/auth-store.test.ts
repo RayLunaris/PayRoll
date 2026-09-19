@@ -103,8 +103,13 @@ describe('Auth Store', () => {
     expect(state.accessToken).toBeNull();
     expect(state.isAuthenticated).toBe(false);
     expect(clearServerSession).toHaveBeenCalled();
-    expect(mockedPost).toHaveBeenCalledWith('/auth/logout', {
-      refreshToken: 'refresh-token',
-    });
+    expect(mockedPost).toHaveBeenCalledWith(
+      '/auth/logout',
+      { refreshToken: 'refresh-token' },
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
+        _skipAuthRefresh: true,
+      }),
+    );
   });
 });

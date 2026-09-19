@@ -43,12 +43,12 @@ describe('calculatePPh21', () => {
   it('should apply PTKP and progressive brackets', async () => {
     const result = await calculatePPh21(10000000, 0, 'TK/0', true);
 
-    // annual gross 120jt, biaya jabatan 6jt, pensiun 4.8jt
-    expect(result.annualNetIncome).toBe(109200000);
-    // net 109.2jt - PTKP 54jt = 55.2jt taxable, all within 5% bracket
-    expect(result.annualTaxableIncome).toBe(55200000);
-    expect(result.annualTax).toBe(2760000);
-    expect(result.monthlyTax).toBe(230000);
+    // annual gross 120jt, biaya jabatan 6jt, pensiun 3.6jt (JHT 2% + JP 1%)
+    expect(result.annualNetIncome).toBe(110400000);
+    // net 110.4jt - PTKP 54jt = 56.4jt taxable, all within 5% bracket
+    expect(result.annualTaxableIncome).toBe(56400000);
+    expect(result.annualTax).toBe(2820000);
+    expect(result.monthlyTax).toBe(235000);
   });
 
   it('should return zero tax when annual income below PTKP', async () => {

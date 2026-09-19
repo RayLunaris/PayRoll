@@ -246,11 +246,12 @@ export async function leaveRoutes(app: FastifyInstance) {
     }
   });
 
-  // Get leave calendar (Fixed range overlap check)
+// Get leave calendar (Fixed range overlap check)
   app.get('/calendar', {
     preHandler: [app.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const user = request.user;
       const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as {
         month?: string | number;
         year?: string | number;
@@ -263,13 +264,33 @@ export async function leaveRoutes(app: FastifyInstance) {
       const lastDay = new Date(y, m, 0).getDate();
       const endDate = `${y}-${m.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
 
+      // Scope the calendar the same way /approvals is scoped: employees only
+      // see their own approved leave, managers only their department's.
+      const conditions = [
+        lte(leaves.startDate, endDate),
+        gte(leaves.endDate, startDate),
+        eq(leaves.status, 'approved'),
+      ];
+
+      if (user.role === 'employee') {
+        const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (emp.length === 0) {
+          return reply.send({ success: true, data: [] });
+        }
+        conditions.push(eq(leaves.employeeId, emp[0].id));
+      } else if (user.role === 'manager') {
+        const mgrEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (mgrEmp.length === 0 || !mgrEmp[0].departmentId) {
+          return reply.status(404).send({ success: false, error: 'Manager employee record or department not found' });
+        }
+        const deptEmps = await db.select({ id: employees.id }).from(employees)
+          .where(eq(employees.departmentId, mgrEmp[0].departmentId));
+        conditions.push(inArray(leaves.employeeId, deptEmps.map((e) => e.id)));
+      }
+
       // Correct overlap check for calendar month
       const data = await db.select().from(leaves)
-        .where(and(
-          lte(leaves.startDate, endDate),
-          gte(leaves.endDate, startDate),
-          eq(leaves.status, 'approved')
-        ));
+        .where(and(...conditions));
 
       return reply.send({ success: true, data });
     } catch (error) {
@@ -382,6 +403,25 @@ export async function leaveRoutes(app: FastifyInstance) {
       const approverEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
       if (approverEmp.length > 0 && targetLeave.employeeId === approverEmp[0].id) {
         return reply.status(400).send({ success: false, error: 'Managers cannot approve their own leave request' });
+      }
+
+      // Department scoping: managers may only approve/reject leave requests from
+      // employees of their own department (mirrors the /approvals filter).
+      // Without this, a manager can approve any pending leave by guessing its id.
+      if (user.role === 'manager') {
+        if (approverEmp.length === 0 || !approverEmp[0].departmentId) {
+          return reply.status(404).send({ success: false, error: 'Manager employee record or department not found' });
+        }
+        if (!targetLeave.employeeId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Leave request has no employee' });
+        }
+        const targetEmp = await db.select({ departmentId: employees.departmentId })
+          .from(employees)
+          .where(eq(employees.id, targetLeave.employeeId))
+          .limit(1);
+        if (targetEmp.length === 0 || targetEmp[0].departmentId !== approverEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Can only manage leave requests from your own department' });
+        }
       }
 
       const newStatus = body.approved ? 'approved' : 'rejected';

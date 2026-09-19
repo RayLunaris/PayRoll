@@ -34,8 +34,8 @@ export async function calculatePPh21(
   // Biaya jabatan (5% dari bruto tahunan, maks Rp 6.000.000/tahun)
   const jabatanFee = Math.min(annualGross * 0.05, 6000000);
 
-  // Iuran pensiun / jaminan hari tua (est. 2% JP + 2% JHT)
-  const pensionFee = (monthlyGrossSalary * 12) * 0.04;
+  // Iuran pensiun / jaminan hari tua (2% JHT + 1% JP = 3%, NOT 4%)
+  const pensionFee = (monthlyGrossSalary * 12) * 0.03;
 
   // Annual net income
   const annualNet = Math.max(0, annualGross - jabatanFee - pensionFee);

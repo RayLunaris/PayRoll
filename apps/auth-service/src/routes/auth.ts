@@ -10,6 +10,9 @@ import {
   isRefreshTokenValid,
   revokeRefreshToken,
   revokeAllUserTokens,
+  isLoginLocked,
+  recordFailedLogin,
+  clearLoginLockout,
 } from '../services/token-store.js';
 
 const loginSchema = z.object({
@@ -21,7 +24,6 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6).max(72),
-  employeeId: z.string().uuid().optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -51,11 +53,20 @@ export async function authRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = loginSchema.parse(request.body);
-      
+
+      // Per-account brute-force lockout (complements the IP rate limit).
+      if (await isLoginLocked(body.email)) {
+        return reply.status(429).send({
+          success: false,
+          error: 'Too many failed login attempts. Please try again in 15 minutes.',
+        });
+      }
+
       // Find user by email
       const result = await db.select().from(users).where(eq(users.email, body.email)).limit(1);
-      
+
       if (result.length === 0) {
+        await recordFailedLogin(body.email);
         return reply.status(401).send({ success: false, error: 'Invalid credentials' });
       }
 
@@ -67,10 +78,14 @@ export async function authRoutes(app: FastifyInstance) {
 
       // Verify password
       const isValid = await compare(body.password, user.passwordHash);
-      
+
       if (!isValid) {
+        await recordFailedLogin(body.email);
         return reply.status(401).send({ success: false, error: 'Invalid credentials' });
       }
+
+      // Reset the counter on a successful login.
+      await clearLoginLockout(body.email);
 
       // Generate tokens with jti for rotation tracking
       const accessToken = app.jwt.sign(
@@ -135,12 +150,13 @@ export async function authRoutes(app: FastifyInstance) {
       // Hash password (max 72 bytes safe for bcrypt)
       const passwordHash = await hash(body.password, 12);
 
-      // Create user - forced to employee role
+      // Create user - forced to employee role.
+      // employeeId is deliberately NOT bindable via self-registration: a new
+      // account must never be able to claim an existing employee record.
       const newUser = await db.insert(users).values({
         email: body.email,
         passwordHash,
         role: 'employee',
-        employeeId: body.employeeId,
         isActive: true,
       }).returning();
 
@@ -312,6 +328,9 @@ export async function authRoutes(app: FastifyInstance) {
 
       const passwordHash = await hash(body.newPassword, 12);
       await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+      // Security: revoke all refresh tokens so every existing session is
+      // forced out after a password change (including other devices).
+      await revokeAllUserTokens(user.id);
 
       return reply.send({ success: true, message: 'Password berhasil diubah' });
     } catch (error) {

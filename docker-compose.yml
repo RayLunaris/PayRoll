@@ -44,7 +44,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
       - REDIS_URL=redis://redis:6379
     depends_on:
       postgres:
@@ -62,7 +62,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,7 +82,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,7 +102,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,7 +122,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,7 +142,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
     depends_on:
       postgres:
         condition: service_healthy
@@ -162,7 +162,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
       - REDIS_URL=redis://redis:6379
       - UPLOAD_DIR=/app/uploads
     volumes:
@@ -181,7 +181,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3002
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
       - REDIS_URL=redis://redis:6379
     depends_on:
       - redis
@@ -202,7 +202,7 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - CORS_ORIGIN=http://localhost:3000
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
       - AUTH_SERVICE_URL=http://auth-service:3010
       - EMPLOYEE_SERVICE_URL=http://employee-service:3011
       - PAYROLL_SERVICE_URL=http://payroll-service:3012

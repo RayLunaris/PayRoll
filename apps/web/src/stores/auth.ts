@@ -58,14 +58,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   logout: async () => {
     const { accessToken, refreshToken } = get()
 
-    if (accessToken && refreshToken) {
-      try {
-        await api.post('/auth/logout', { refreshToken })
-      } catch {
-        // Best-effort revoke: state is cleared regardless of server result.
-      }
-    }
-
+    // Clear the local session FIRST, before any network call. The axios
+    // response interceptor calls logout() again when a refresh fails, and
+    // that recursion must see an already-empty store or it loops forever
+    // (stale refresh cookie + expired access token => endless
+    // 401 -> refresh -> logout -> 401 -> ...).
     set({
       user: null,
       accessToken: null,
@@ -74,6 +71,21 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       error: null,
       isLoading: false,
     })
+
+    if (accessToken && refreshToken) {
+      try {
+        // Send the captured access token explicitly (the store is already
+        // cleared) and mark the request so the interceptor never retries with
+        // /auth/refresh when this endpoint answers 401.
+        await api.post('/auth/logout', { refreshToken }, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          _skipAuthRefresh: true,
+        } as import('axios').AxiosRequestConfig)
+      } catch {
+        // Best-effort revoke: state is cleared regardless of server result.
+      }
+    }
+
     await clearServerSession()
   },
 

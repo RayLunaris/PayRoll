@@ -2,6 +2,8 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../index.js';
 
+process.env.JWT_SECRET ||= 'test-only-secret-not-used-in-production';
+
 const ADMIN_EMAIL = 'admin@payrollpro.com';
 const ADMIN_PASSWORD = 'admin123';
 
