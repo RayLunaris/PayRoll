@@ -47,6 +47,9 @@ export default function AttendanceReportPage() {
 
   // Fetch employee directory for mapping employeeId to full name
   useEffect(() => {
+    if (!user || !ALLOWED_ROLES.includes(user.role as (typeof ALLOWED_ROLES)[number])) {
+      return;
+    }
     api
       .get<{ data: EmployeeItem[] }>('/employees')
       .then((res) => {
@@ -59,7 +62,7 @@ export default function AttendanceReportPage() {
       .catch((err) => {
         console.error('Failed to fetch employees list for mapping:', err);
       });
-  }, []);
+  }, [user]);
 
   const fetchReport = useCallback(async () => {
     setLoading(true);

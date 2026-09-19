@@ -10,10 +10,10 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { isLoading } = useRequireAuth()
+  const { isLoading, isAuthenticated } = useRequireAuth()
   const collapsed = useUIStore((state) => state.sidebarCollapsed)
 
-  if (isLoading) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600" />

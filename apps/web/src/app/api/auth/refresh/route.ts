@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { REFRESH_TOKEN_COOKIE } from '@/lib/auth-cookie'
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE, USER_ROLE_COOKIE } from '@/lib/auth-cookie'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 
@@ -30,13 +30,22 @@ const cookieOptions = (
   path: '/',
 })
 
+const clearSessionCookies = (res: NextResponse, request: Request) => {
+  const opts = cookieOptions(request)
+  res.cookies.set(ACCESS_TOKEN_COOKIE, '', { ...opts, maxAge: 0 })
+  res.cookies.set(REFRESH_TOKEN_COOKIE, '', { ...opts, maxAge: 0 })
+  res.cookies.set(USER_ROLE_COOKIE, '', { ...opts, maxAge: 0 })
+}
+
 // Server-side refresh: reads the HttpOnly refresh token cookie, exchanges it
 // with the gateway, then re-issues HttpOnly cookies and returns the new tokens
 // so the client can keep the access token in memory only.
 export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE)?.value
   if (!refreshToken) {
-    return NextResponse.json({ success: false, error: 'Session expired' }, { status: 401 })
+    const res = NextResponse.json({ success: false, error: 'Session expired' }, { status: 401 })
+    clearSessionCookies(res, request)
+    return res
   }
 
   let upstream: Response
@@ -53,7 +62,11 @@ export async function POST(request: NextRequest) {
 
   const payload = await upstream.json()
   if (!upstream.ok) {
-    return NextResponse.json(payload, { status: upstream.status })
+    const res = NextResponse.json(payload, { status: upstream.status })
+    if (upstream.status === 401 || upstream.status === 403) {
+      clearSessionCookies(res, request)
+    }
+    return res
   }
 
   const accessToken: string | undefined = payload?.data?.accessToken

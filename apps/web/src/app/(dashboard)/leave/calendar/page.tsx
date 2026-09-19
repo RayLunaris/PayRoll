@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Breadcrumb from '@/components/layout/Breadcrumb';
+import { useAuthStore } from '@/stores/auth';
 import api from '@/lib/api';
 import {
   CalendarDays,
@@ -92,6 +93,7 @@ const LEAVE_TYPE_CONFIG: Record<
 };
 
 export default function LeaveCalendarPage() {
+  const user = useAuthStore((state) => state.user);
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
@@ -115,9 +117,12 @@ export default function LeaveCalendarPage() {
     void (async () => {
       setLoading(true);
       try {
+        const canViewEmployees = Boolean(user && ['manager', 'hr_admin', 'super_admin'].includes(user.role));
         const [leavesRes, empRes] = await Promise.all([
           api.get<{ data: LeaveCalendarItem[] }>(`/leaves/calendar?month=${month}&year=${year}`),
-          api.get<{ data: Employee[] }>('/employees?page=1&limit=200').catch(() => ({ data: { data: [] } })),
+          canViewEmployees
+            ? api.get<{ data: Employee[] }>('/employees?page=1&limit=200').catch(() => ({ data: { data: [] } }))
+            : Promise.resolve({ data: { data: [] } }),
         ]);
 
         const rawLeaves = leavesRes.data.data || [];
@@ -140,7 +145,7 @@ export default function LeaveCalendarPage() {
         setLoading(false);
       }
     })();
-  }, [year, month]);
+  }, [year, month, user]);
 
   // Calendar cell layout computation (Monday-start)
   const { cells, daysInMonth } = useMemo(() => {

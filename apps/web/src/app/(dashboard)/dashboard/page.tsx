@@ -33,16 +33,25 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
 
+  const isManagement = Boolean(user && ['manager', 'hr_admin', 'super_admin'].includes(user.role));
+  const isApprover = Boolean(user && ['manager', 'hr_admin', 'super_admin'].includes(user.role));
+
   useEffect(() => {
+    if (!user) return;
     let active = true;
 
     void (async () => {
+      setLoading(true);
       try {
-        const isApprover = user && ['manager', 'hr_admin', 'super_admin'].includes(user.role);
+        const canViewEmployees = ['manager', 'hr_admin', 'super_admin'].includes(user.role);
+        const canApprove = ['manager', 'hr_admin', 'super_admin'].includes(user.role);
+
         const [employees, attendance, approvals] = await Promise.all([
-          api.get('/employees').catch(() => ({ data: { data: [] } })),
+          canViewEmployees
+            ? api.get('/employees').catch(() => ({ data: { data: [] } }))
+            : Promise.resolve({ data: { data: [] } }),
           api.get('/attendance/today').catch(() => ({ data: { data: null } })),
-          isApprover
+          canApprove
             ? api.get('/leaves/approvals').catch(() => ({ data: { data: [] } }))
             : Promise.resolve({ data: { data: [] } }),
         ]);
@@ -65,7 +74,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   return (
     <div>
@@ -82,7 +91,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatCard
           title="Total Karyawan"
-          value={loading ? '...' : stats.totalEmployees}
+          value={loading ? '...' : isManagement ? stats.totalEmployees : '-'}
           icon={<Users className="h-6 w-6" />}
           color="blue"
         />
@@ -100,7 +109,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Menunggu Persetujuan"
-          value={loading ? '...' : stats.pendingApprovals}
+          value={loading ? '...' : isApprover ? stats.pendingApprovals : '-'}
           icon={<AlertCircle className="h-6 w-6" />}
           color="red"
         />

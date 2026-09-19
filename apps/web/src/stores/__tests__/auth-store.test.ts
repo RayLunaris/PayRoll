@@ -12,11 +12,17 @@ vi.mock('@/lib/auth-cookie', () => ({
   clearServerSession: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/session', () => ({
+  refreshServerSession: vi.fn(),
+}));
+
 import api from '@/lib/api';
 import { persistServerSession, clearServerSession } from '@/lib/auth-cookie';
+import { refreshServerSession } from '@/lib/session';
 import { useAuthStore } from '@/stores/auth';
 
 const mockedPost = vi.mocked(api.post);
+const mockedRefresh = vi.mocked(refreshServerSession);
 
 describe('Auth Store', () => {
   beforeEach(() => {
@@ -102,6 +108,7 @@ describe('Auth Store', () => {
     expect(state.user).toBeNull();
     expect(state.accessToken).toBeNull();
     expect(state.isAuthenticated).toBe(false);
+    expect(state.restoreAttempted).toBe(true);
     expect(clearServerSession).toHaveBeenCalled();
     expect(mockedPost).toHaveBeenCalledWith(
       '/auth/logout',
@@ -111,5 +118,35 @@ describe('Auth Store', () => {
         _skipAuthRefresh: true,
       }),
     );
+  });
+
+  it('should not loop and clear loading in fetchMe if restore was already attempted', async () => {
+    useAuthStore.setState({
+      accessToken: null,
+      restoreAttempted: true,
+      isLoading: false,
+    });
+
+    await useAuthStore.getState().fetchMe();
+
+    const state = useAuthStore.getState();
+    expect(state.isLoading).toBe(false);
+    expect(mockedRefresh).not.toHaveBeenCalled();
+  });
+
+  it('should set restoreAttempted and clear session when refreshServerSession fails in fetchMe', async () => {
+    useAuthStore.setState({
+      accessToken: null,
+      restoreAttempted: false,
+      isLoading: false,
+    });
+    mockedRefresh.mockRejectedValueOnce(new Error('Session refresh failed'));
+
+    await useAuthStore.getState().fetchMe();
+
+    const state = useAuthStore.getState();
+    expect(state.restoreAttempted).toBe(true);
+    expect(state.isLoading).toBe(false);
+    expect(state.isAuthenticated).toBe(false);
   });
 });

@@ -70,6 +70,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       isAuthenticated: false,
       error: null,
       isLoading: false,
+      restoreAttempted: true,
     })
 
     if (accessToken && refreshToken) {
@@ -101,7 +102,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     let { accessToken } = get()
 
     if (!accessToken) {
-      if (get().restoreAttempted) return
+      if (get().restoreAttempted) {
+        set({ isLoading: false })
+        return
+      }
       // Restore session from HttpOnly refresh-token cookie on hard reload.
       // Route through the SAME single-flight coordinator used by the axios
       // 401-interceptor (lib/session.ts) so fetchMe() and interceptor-triggered
@@ -113,8 +117,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       try {
         restored = await refreshServerSession()
       } catch {
-        set({ restoreAttempted: true })
-        get().logout()
+        set({ restoreAttempted: true, isLoading: false })
+        await get().logout()
         return
       }
       set({
@@ -129,10 +133,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     set({ isLoading: true })
     try {
       const { data } = await api.get('/auth/me')
-      set({ user: data.data, isAuthenticated: true, isLoading: false })
+      set({ user: data.data, isAuthenticated: true, isLoading: false, restoreAttempted: true })
     } catch {
-      set({ isLoading: false })
-      get().logout()
+      set({ isLoading: false, restoreAttempted: true })
+      await get().logout()
     }
   },
 
@@ -142,6 +146,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       refreshToken,
       isAuthenticated: true,
       restoreAttempted: true,
+      isLoading: false,
     })
     void persistServerSession(accessToken, refreshToken, get().user?.role)
   },

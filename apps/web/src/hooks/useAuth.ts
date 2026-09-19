@@ -9,13 +9,14 @@ export function useAuth() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
   const hasHydrated = useAuthStore((state) => state.hasHydrated)
+  const restoreAttempted = useAuthStore((state) => state.restoreAttempted)
   const fetchMe = useAuthStore((state) => state.fetchMe)
 
   useEffect(() => {
-    if (hasHydrated && !isAuthenticated && !isLoading) {
+    if (hasHydrated && !isAuthenticated && !isLoading && !restoreAttempted) {
       fetchMe()
     }
-  }, [hasHydrated, isAuthenticated, isLoading, fetchMe])
+  }, [hasHydrated, isAuthenticated, isLoading, restoreAttempted, fetchMe])
 
   return { user, isAuthenticated, isLoading, hasHydrated }
 }
@@ -24,7 +25,7 @@ export function useRequireAuth() {
   const router = useRouter()
   const { user, isAuthenticated, isLoading, hasHydrated } = useAuth()
   const restoreFinished = useAuthStore((state) => state.restoreAttempted)
-  const loading = isLoading || !hasHydrated
+  const loading = isLoading || !hasHydrated || !restoreFinished
 
   useEffect(() => {
     // Only redirect when session-restore has actually COMPLETED (restoreFinished).
@@ -45,14 +46,19 @@ export function useRequireAuth() {
 export function useRequireRole(...roles: string[]) {
   const router = useRouter()
   const { user, isAuthenticated, isLoading, hasHydrated } = useAuth()
-  const loading = isLoading || !hasHydrated
+  const restoreFinished = useAuthStore((state) => state.restoreAttempted)
+  const loading = isLoading || !hasHydrated || !restoreFinished
   const rolesKey = roles.join(',')
 
   useEffect(() => {
+    if (hasHydrated && restoreFinished && !isLoading && !isAuthenticated) {
+      router.replace('/login')
+      return
+    }
     if (hasHydrated && !isLoading && isAuthenticated && user && !rolesKey.split(',').includes(user.role)) {
       router.replace('/dashboard')
     }
-  }, [user, isAuthenticated, isLoading, hasHydrated, rolesKey, router])
+  }, [user, isAuthenticated, isLoading, hasHydrated, restoreFinished, rolesKey, router])
 
   return { user, isAuthenticated, isLoading: loading }
 }

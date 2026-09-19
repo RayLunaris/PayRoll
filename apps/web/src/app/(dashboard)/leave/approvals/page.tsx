@@ -110,10 +110,12 @@ export default function LeaveApprovalsPage() {
   }, []);
 
   useEffect(() => {
-    void (async () => {
-      await fetchData();
-    })();
-  }, [fetchData]);
+    if (user && ALLOWED_ROLES.includes(user.role as UserRole)) {
+      void (async () => {
+        await fetchData();
+      })();
+    }
+  }, [user, fetchData]);
 
   const handleDecision = async (id: string, approved: boolean) => {
     setProcessingId(id);

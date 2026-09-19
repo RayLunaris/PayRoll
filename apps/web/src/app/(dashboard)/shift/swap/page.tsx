@@ -63,9 +63,12 @@ export default function ShiftSwapPage() {
         queryParam = `?direction=${direction}`;
       }
 
+      const canViewEmployees = Boolean(user && ['manager', 'hr_admin', 'super_admin'].includes(user.role));
       const [swapsRes, empRes] = await Promise.all([
         api.get<{ data: ShiftSwap[] }>(`/shifts/swap/requests${queryParam}`).catch(() => ({ data: { data: [] } })),
-        api.get<{ data: Employee[] }>('/employees?page=1&limit=200').catch(() => ({ data: { data: [] } })),
+        canViewEmployees
+          ? api.get<{ data: Employee[] }>('/employees?page=1&limit=200').catch(() => ({ data: { data: [] } }))
+          : Promise.resolve({ data: { data: [] } }),
       ]);
 
       const empList = empRes.data.data || [];
@@ -89,7 +92,7 @@ export default function ShiftSwapPage() {
     } finally {
       setLoading(false);
     }
-  }, [direction]);
+  }, [direction, user]);
 
   useEffect(() => {
     // Deferred so state updates are not synchronous with the effect body.
