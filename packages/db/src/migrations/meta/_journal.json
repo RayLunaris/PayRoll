@@ -15,6 +15,13 @@
       "when": 1789558508678,
       "tag": "0001_talented_captain_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789998223214,
+      "tag": "0002_even_energizer",
+      "breakpoints": true
     }
   ]
 }

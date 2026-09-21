@@ -444,11 +444,32 @@ export async function attendanceRoutes(app: FastifyInstance) {
 
       let targetEmployeeId: string;
       if (user.role === 'employee') {
+        if (query.employeeId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Karyawan tidak diizinkan menggunakan parameter employeeId' });
+        }
         const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0) {
           return reply.send({ success: true, data: null });
         }
         targetEmployeeId = emp[0].id;
+      } else if (user.role === 'manager') {
+        if (query.employeeId) {
+          const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Departemen manager tidak ditemukan' });
+          }
+          const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, query.employeeId)).limit(1);
+          if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Hanya dapat mengakses data presensi karyawan dalam departemen Anda' });
+          }
+          targetEmployeeId = query.employeeId;
+        } else {
+          const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (emp.length === 0) {
+            return reply.send({ success: true, data: null });
+          }
+          targetEmployeeId = emp[0].id;
+        }
       } else {
         if (query.employeeId) {
           targetEmployeeId = query.employeeId;
@@ -488,11 +509,32 @@ export async function attendanceRoutes(app: FastifyInstance) {
 
       let targetEmployeeId: string;
       if (user.role === 'employee') {
+        if (employeeId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Karyawan tidak diizinkan menggunakan parameter employeeId' });
+        }
         const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0) {
           return reply.send({ success: true, data: [] });
         }
         targetEmployeeId = emp[0].id;
+      } else if (user.role === 'manager') {
+        if (employeeId) {
+          const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Departemen manager tidak ditemukan' });
+          }
+          const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, employeeId)).limit(1);
+          if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Hanya dapat mengakses data riwayat presensi karyawan dalam departemen Anda' });
+          }
+          targetEmployeeId = employeeId;
+        } else {
+          const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (emp.length === 0) {
+            return reply.send({ success: true, data: [] });
+          }
+          targetEmployeeId = emp[0].id;
+        }
       } else {
         if (employeeId) {
           targetEmployeeId = employeeId;
@@ -527,6 +569,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
     preHandler: [app.authenticate, requireRole('super_admin', 'hr_admin', 'manager')],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const user = request.user;
       const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as { month?: string | number; year?: string | number };
 
       const m = parseInt(month.toString(), 10);
@@ -536,6 +579,27 @@ export async function attendanceRoutes(app: FastifyInstance) {
       const lastDay = new Date(y, m, 0).getDate();
       const endDate = `${y}-${m.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
 
+      let allowedEmployeeIds: string[] | null = null;
+      if (user.role === 'manager') {
+        const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Departemen manager tidak ditemukan' });
+        }
+        const deptEmps = await db.select({ id: employees.id }).from(employees).where(eq(employees.departmentId, mgrEmp[0].departmentId));
+        if (deptEmps.length === 0) {
+          return reply.send({ success: true, data: [] });
+        }
+        allowedEmployeeIds = deptEmps.map((e) => e.id);
+      }
+
+      const attConditions = [
+        gte(attendances.date, startDate),
+        lte(attendances.date, endDate),
+      ];
+      if (allowedEmployeeIds !== null) {
+        attConditions.push(inArray(attendances.employeeId, allowedEmployeeIds));
+      }
+
       const data = await db.select({
         employeeId: attendances.employeeId,
         date: attendances.date,
@@ -543,21 +607,23 @@ export async function attendanceRoutes(app: FastifyInstance) {
         overtimeHours: attendances.overtimeHours,
       })
       .from(attendances)
-      .where(and(
-        gte(attendances.date, startDate),
-        lte(attendances.date, endDate)
-      ));
+      .where(and(...attConditions));
 
       // Scheduled working days per employee come from real shift assignments.
+      const shiftConditions = [
+        gte(employeeShifts.date, startDate),
+        lte(employeeShifts.date, endDate),
+      ];
+      if (allowedEmployeeIds !== null) {
+        shiftConditions.push(inArray(employeeShifts.employeeId, allowedEmployeeIds));
+      }
+
       const shiftDays = await db.select({
         employeeId: employeeShifts.employeeId,
         date: employeeShifts.date,
       })
       .from(employeeShifts)
-      .where(and(
-        gte(employeeShifts.date, startDate),
-        lte(employeeShifts.date, endDate)
-      ));
+      .where(and(...shiftConditions));
 
       const shiftSets = new Map<string, Set<string>>();
       for (const sd of shiftDays) {
@@ -1018,12 +1084,18 @@ export async function attendanceRoutes(app: FastifyInstance) {
         }
       }
 
-      // 3. Recent payrolls
-      const payConditions = [];
-      if (employeeScope !== null && employeeScope.length > 0) {
-        payConditions.push(inArray(payrolls.employeeId, employeeScope));
+      // 3. Recent payrolls: strictly personal for non-admin (manager & employee only see their own payslip activities)
+      let payrollScope: string[] | null = null;
+      if (!['hr_admin', 'super_admin'].includes(user.role)) {
+        const myEmp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        payrollScope = myEmp.length > 0 ? [myEmp[0].id] : [];
       }
-      if (employeeScope === null || employeeScope.length > 0) {
+
+      const payConditions = [];
+      if (payrollScope !== null && payrollScope.length > 0) {
+        payConditions.push(inArray(payrolls.employeeId, payrollScope));
+      }
+      if (payrollScope === null || payrollScope.length > 0) {
         const recentPayrolls = await db.select({
           id: payrolls.id,
           periodMonth: payrolls.periodMonth,
@@ -1163,25 +1235,44 @@ export async function attendanceRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const user = request.user;
-      const { employeeId, month, year } = request.query as { employeeId?: string; month?: string; year?: string };
+      const { employeeId, month, year, all } = request.query as {
+        employeeId?: string;
+        month?: string;
+        year?: string;
+        all?: string;
+      };
 
       const conditions: Parameters<typeof and>[0][] = [];
 
       if (user.role === 'employee') {
+        if (all || employeeId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Karyawan tidak diizinkan menggunakan parameter all atau employeeId' });
+        }
+        const emp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (emp.length === 0) return reply.send({ success: true, data: [] });
+        conditions.push(eq(overtimeRequests.employeeId, emp[0].id));
+      } else if (!all && !employeeId) {
         const emp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0) return reply.send({ success: true, data: [] });
         conditions.push(eq(overtimeRequests.employeeId, emp[0].id));
       } else if (user.role === 'manager') {
         const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (mgrEmp.length === 0 || !mgrEmp[0].departmentId) {
-          return reply.send({ success: true, data: [] });
+          return reply.status(403).send({ success: false, error: 'Departemen manager tidak ditemukan' });
         }
-        const deptEmps = await db.select({ id: employees.id }).from(employees).where(eq(employees.departmentId, mgrEmp[0].departmentId));
-        if (deptEmps.length === 0) return reply.send({ success: true, data: [] });
-        conditions.push(inArray(overtimeRequests.employeeId, deptEmps.map((e) => e.id)));
-        if (employeeId) conditions.push(eq(overtimeRequests.employeeId, employeeId));
+        if (employeeId) {
+          const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, employeeId)).limit(1);
+          if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Hanya bisa melihat lembur karyawan di departemen Anda' });
+          }
+          conditions.push(eq(overtimeRequests.employeeId, employeeId));
+        } else {
+          const deptEmps = await db.select({ id: employees.id }).from(employees).where(eq(employees.departmentId, mgrEmp[0].departmentId));
+          if (deptEmps.length === 0) return reply.send({ success: true, data: [] });
+          conditions.push(inArray(overtimeRequests.employeeId, deptEmps.map((e) => e.id)));
+        }
       } else {
-        // hr_admin / super_admin: full access
+        // hr_admin / super_admin: full access when all=true or employeeId is specified
         if (employeeId) conditions.push(eq(overtimeRequests.employeeId, employeeId));
       }
 
@@ -1260,6 +1351,12 @@ export async function attendanceRoutes(app: FastifyInstance) {
         return reply.status(400).send({ success: false, error: `Pengajuan sudah diproses (status: ${existing[0].status})` });
       }
 
+      // Prevent self-approval (cannot approve one's own overtime request)
+      const approverEmp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+      if (approverEmp.length > 0 && existing[0].employeeId === approverEmp[0].id) {
+        return reply.status(400).send({ success: false, error: 'Tidak dapat menyetujui pengajuan lembur milik sendiri' });
+      }
+
       // Manager scope check
       if (user.role === 'manager') {
         const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
@@ -1267,7 +1364,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
           return reply.status(404).send({ success: false, error: 'Data departemen manager tidak ditemukan' });
         }
         const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, existing[0].employeeId!)).limit(1);
-        if (targetEmp.length === 0 || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+        if (targetEmp.length === 0 || !targetEmp[0].departmentId || !mgrEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Hanya bisa approve lembur karyawan di departemen Anda' });
         }
       }

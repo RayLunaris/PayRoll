@@ -149,11 +149,32 @@ export async function leaveRoutes(app: FastifyInstance) {
 
       let targetEmployeeId: string;
       if (user.role === 'employee') {
+        if (employeeId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Karyawan tidak diizinkan menggunakan parameter employeeId' });
+        }
         const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0) {
           return reply.status(404).send({ success: false, error: 'Employee not found' });
         }
         targetEmployeeId = emp[0].id;
+      } else if (user.role === 'manager') {
+        if (employeeId) {
+          const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Manager department not found' });
+          }
+          const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, employeeId)).limit(1);
+          if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Cannot access leave history outside your department' });
+          }
+          targetEmployeeId = employeeId;
+        } else {
+          const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (emp.length === 0) {
+            return reply.status(404).send({ success: false, error: 'Employee not found' });
+          }
+          targetEmployeeId = emp[0].id;
+        }
       } else {
         if (employeeId) {
           targetEmployeeId = employeeId;
@@ -188,11 +209,32 @@ export async function leaveRoutes(app: FastifyInstance) {
 
       let targetEmployeeId: string;
       if (user.role === 'employee') {
+        if (employeeId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Karyawan tidak diizinkan menggunakan parameter employeeId' });
+        }
         const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0) {
           return reply.send({ success: true, data: [] });
         }
         targetEmployeeId = emp[0].id;
+      } else if (user.role === 'manager') {
+        if (employeeId) {
+          const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Manager department not found' });
+          }
+          const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, employeeId)).limit(1);
+          if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Cannot access leave quota outside your department' });
+          }
+          targetEmployeeId = employeeId;
+        } else {
+          const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (emp.length === 0) {
+            return reply.send({ success: true, data: [] });
+          }
+          targetEmployeeId = emp[0].id;
+        }
       } else {
         if (employeeId) {
           targetEmployeeId = employeeId;
@@ -364,6 +406,15 @@ export async function leaveRoutes(app: FastifyInstance) {
         if (emp.length === 0 || leave[0].employeeId !== emp[0].id) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
         }
+      } else if (user.role === 'manager') {
+        const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Manager department not found' });
+        }
+        const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, leave[0].employeeId!)).limit(1);
+        if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Cannot access leave details outside your department' });
+        }
       }
 
       return reply.send({ success: true, data: leave[0] });
@@ -419,7 +470,7 @@ export async function leaveRoutes(app: FastifyInstance) {
           .from(employees)
           .where(eq(employees.id, targetLeave.employeeId))
           .limit(1);
-        if (targetEmp.length === 0 || targetEmp[0].departmentId !== approverEmp[0].departmentId) {
+        if (targetEmp.length === 0 || !targetEmp[0].departmentId || targetEmp[0].departmentId !== approverEmp[0].departmentId) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Can only manage leave requests from your own department' });
         }
       }
@@ -554,6 +605,15 @@ export async function leaveRoutes(app: FastifyInstance) {
         const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0 || targetLeave.employeeId !== emp[0].id) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Not your leave request' });
+        }
+      } else if (user.role === 'manager') {
+        const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Manager department not found' });
+        }
+        const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, targetLeave.employeeId!)).limit(1);
+        if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Cannot cancel leave outside your department' });
         }
       }
 

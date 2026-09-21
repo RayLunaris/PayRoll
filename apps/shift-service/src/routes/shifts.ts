@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, shifts, employeeShifts, shiftSwaps, employees, eq, and, or, desc, asc, gte, lte, sql } from '@payrollpro/db';
+import { db, shifts, employeeShifts, shiftSwaps, employees, eq, and, or, desc, asc, gte, lte, sql, inArray } from '@payrollpro/db';
 import { getWIBDateString, getWIBTimeString, timeToMinutes } from '@payrollpro/shared-types';
 
 const timeRegex = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
@@ -33,6 +33,7 @@ const calendarQuerySchema = z.object({
   employeeId: z.string().uuid().optional(),
   month: z.coerce.number().min(1, 'Month must be between 1 and 12').max(12, 'Month must be between 1 and 12').optional().default(new Date().getMonth() + 1),
   year: z.coerce.number().min(2000).max(2100).optional().default(new Date().getFullYear()),
+  all: z.enum(['true', 'false']).optional(),
 });
 
 const MIN_REST_HOURS = 11;
@@ -240,7 +241,7 @@ export async function shiftRoutes(app: FastifyInstance) {
         if (mgrEmp.length === 0 || !mgrEmp[0].departmentId) {
           return reply.status(404).send({ success: false, error: 'Manager employee record or department not found' });
         }
-        if (emp[0].departmentId !== mgrEmp[0].departmentId) {
+        if (!emp[0].departmentId || !mgrEmp[0].departmentId || emp[0].departmentId !== mgrEmp[0].departmentId) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Can only assign shifts to employees from your own department' });
         }
       }
@@ -301,11 +302,40 @@ export async function shiftRoutes(app: FastifyInstance) {
 
       let targetEmployeeId = query.employeeId;
       if (user.role === 'employee') {
+        if (query.all || query.employeeId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Karyawan tidak diizinkan menggunakan parameter all atau employeeId' });
+        }
         const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
         if (emp.length === 0) {
           return reply.send({ success: true, data: [] });
         }
         targetEmployeeId = emp[0].id;
+      } else if (user.role === 'manager') {
+        if (query.employeeId) {
+          const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Manager department not found' });
+          }
+          const targetEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, query.employeeId)).limit(1);
+          if (!targetEmp.length || !targetEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Cannot view shift calendar outside your department' });
+          }
+          targetEmployeeId = query.employeeId;
+        } else if (query.all !== 'true') {
+          const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (emp.length === 0) {
+            return reply.send({ success: true, data: [] });
+          }
+          targetEmployeeId = emp[0].id;
+        }
+      } else {
+        if (!query.employeeId && query.all !== 'true') {
+          const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (emp.length === 0) {
+            return reply.send({ success: true, data: [] });
+          }
+          targetEmployeeId = emp[0].id;
+        }
       }
 
       const m = query.month;
@@ -319,7 +349,15 @@ export async function shiftRoutes(app: FastifyInstance) {
         lte(employeeShifts.date, endDate),
       ];
 
-      if (targetEmployeeId) {
+      if (user.role === 'manager' && query.all === 'true' && !targetEmployeeId) {
+        const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.send({ success: true, data: [] });
+        }
+        const deptEmps = await db.select({ id: employees.id }).from(employees).where(eq(employees.departmentId, mgrEmp[0].departmentId));
+        if (deptEmps.length === 0) return reply.send({ success: true, data: [] });
+        conditions.push(inArray(employeeShifts.employeeId, deptEmps.map((e) => e.id)));
+      } else if (targetEmployeeId) {
         conditions.push(eq(employeeShifts.employeeId, targetEmployeeId));
       }
 
@@ -509,6 +547,12 @@ export async function shiftRoutes(app: FastifyInstance) {
         return reply.status(400).send({ success: false, error: 'Swap request already processed' });
       }
 
+      // Prevent requester from approving their own swap request
+      const currentEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+      if (currentEmp.length > 0 && targetSwap.requesterId === currentEmp[0].id) {
+        return reply.status(400).send({ success: false, error: 'Tidak dapat menyetujui pengajuan tukar shift milik sendiri' });
+      }
+
       // Permit only: target employee or manager/hr_admin/super_admin
       let isTargetEmployee = false;
       if (user.role === 'employee') {
@@ -520,7 +564,16 @@ export async function shiftRoutes(app: FastifyInstance) {
         if (!isTargetEmployee) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Only the target employee can approve this swap' });
         }
-      } else if (!['manager', 'hr_admin', 'super_admin'].includes(user.role)) {
+      } else if (user.role === 'manager') {
+        const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Manager department not found' });
+        }
+        const requesterEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.id, targetSwap.requesterId!)).limit(1);
+        if (!requesterEmp.length || !requesterEmp[0].departmentId || requesterEmp[0].departmentId !== mgrEmp[0].departmentId) {
+          return reply.status(403).send({ success: false, error: 'Forbidden: Can only manage shift swaps from your own department' });
+        }
+      } else if (!['hr_admin', 'super_admin'].includes(user.role)) {
         return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
       }
 

@@ -53,7 +53,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const NUM = (value: number) => Number(value || 0);
 
-const ALLOWED_ROLES = ['hr_admin', 'super_admin', 'manager'];
+const ALLOWED_ROLES = ['hr_admin', 'super_admin'];
 
 export default function PayrollReportPage() {
   const router = useRouter();

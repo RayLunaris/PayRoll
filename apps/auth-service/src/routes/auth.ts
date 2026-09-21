@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { hash, compare } from 'bcrypt';
-import { db, users, employees, eq, desc } from '@payrollpro/db';
+import { db, users, employees, departments, positions, workLocations, eq, desc } from '@payrollpro/db';
 import { UserRole } from '@payrollpro/shared-types';
 import { requireRole } from '../middleware/auth.js';
 import {
@@ -20,8 +20,10 @@ const loginSchema = z.object({
   password: z.string().min(6).max(72),
 });
 
-// Register schema strictly disallows choosing roles (K4 fix: all self-registrations become employee)
+// Register schema strictly disallows choosing roles (all self-registrations become employee)
+// Automatically provisions a linked employee profile for the new user
 const registerSchema = z.object({
+  fullName: z.string().min(1).max(150).optional(),
   email: z.string().email(),
   password: z.string().min(6).max(72),
 });
@@ -151,8 +153,6 @@ export async function authRoutes(app: FastifyInstance) {
       const passwordHash = await hash(body.password, 12);
 
       // Create user - forced to employee role.
-      // employeeId is deliberately NOT bindable via self-registration: a new
-      // account must never be able to claim an existing employee record.
       const newUser = await db.insert(users).values({
         email: body.email,
         passwordHash,
@@ -160,12 +160,52 @@ export async function authRoutes(app: FastifyInstance) {
         isActive: true,
       }).returning();
 
+      // Automatically provision linked employee record with default department, position & location
+      const [depts, pos, locs, allEmps] = await Promise.all([
+        db.select().from(departments),
+        db.select().from(positions),
+        db.select().from(workLocations),
+        db.select({ nip: employees.nip }).from(employees),
+      ]);
+
+      const defaultDept = depts.find(d => d.name.toLowerCase().includes('information') || d.name.toLowerCase().includes('it')) || depts[0];
+      const defaultPos = pos[0];
+      const defaultLoc = locs[0];
+
+      let nextNum = 1;
+      for (const emp of allEmps) {
+        const match = emp.nip.match(/^EMP(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num >= nextNum) nextNum = num + 1;
+        }
+      }
+      const nip = 'EMP' + String(nextNum).padStart(3, '0');
+      const today = new Date().toISOString().split('T')[0];
+      const rawName = body.fullName?.trim() || body.email.split('@')[0];
+      const fullName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
+      const [newEmp] = await db.insert(employees).values({
+        userId: newUser[0].id,
+        nip,
+        fullName,
+        departmentId: defaultDept?.id,
+        positionId: defaultPos?.id,
+        locationId: defaultLoc?.id,
+        joinDate: today,
+        baseSalary: '8000000.00',
+        isActive: true,
+      }).returning();
+
+      await db.update(users).set({ employeeId: newEmp.id }).where(eq(users.id, newUser[0].id));
+
       return reply.status(201).send({
         success: true,
         data: {
           id: newUser[0].id,
           email: newUser[0].email,
           role: newUser[0].role,
+          employeeId: newEmp.id,
         },
       });
     } catch (error: any) {
@@ -458,6 +498,7 @@ export async function authRoutes(app: FastifyInstance) {
       }
 
       await revokeAllUserTokens(id);
+      await db.delete(employees).where(eq(employees.userId, id));
       await db.delete(users).where(eq(users.id, id));
 
       return reply.send({ success: true, message: 'User deleted' });

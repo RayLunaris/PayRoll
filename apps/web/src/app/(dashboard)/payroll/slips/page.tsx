@@ -57,7 +57,7 @@ export default function PayslipsPage() {
     setError('');
     try {
       const response = await api.get<{ data: Payroll[] }>(
-        `/payrolls?month=${month}&year=${year}`,
+        `/payrolls/my?month=${month}&year=${year}`,
       );
       setSlips(response.data.data || []);
     } catch (err: unknown) {

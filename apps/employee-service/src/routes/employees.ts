@@ -119,7 +119,7 @@ export async function employeeRoutes(app: FastifyInstance) {
       } else if (user.role === 'manager') {
         const target = result[0];
         const mgr = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-        const sameDept = mgr.length > 0 && mgr[0].departmentId && target.departmentId === mgr[0].departmentId;
+        const sameDept = mgr.length > 0 && !!mgr[0].departmentId && !!target.departmentId && target.departmentId === mgr[0].departmentId;
         const isSelf = mgr.length > 0 && mgr[0].id === id;
         if (!sameDept && !isSelf) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });

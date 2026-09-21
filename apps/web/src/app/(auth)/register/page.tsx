@@ -10,6 +10,7 @@ import api from '@/lib/api'
 
 const registerSchema = z
   .object({
+    fullName: z.string().min(2, 'Nama lengkap minimal 2 karakter'),
     email: z.string().email('Email tidak valid'),
     password: z.string().min(6, 'Password minimal 6 karakter'),
     confirmPassword: z.string(),
@@ -38,8 +39,9 @@ export default function RegisterPage() {
     setLoading(true)
     setError('')
     try {
-      // Backend locks role to 'employee' for self-registration (no role payload).
+      // Backend locks role to 'employee' and creates employee profile automatically.
       await api.post('/auth/register', {
+        fullName: data.fullName,
         email: data.email,
         password: data.password,
       })
@@ -67,6 +69,19 @@ export default function RegisterPage() {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div>
+          <label className="label">Nama Lengkap</label>
+          <input
+            type="text"
+            {...register('fullName')}
+            className="input"
+            placeholder="Contoh: Reyhan Pratama"
+          />
+          {errors.fullName && (
+            <p className="mt-1 text-sm text-red-600">{errors.fullName.message}</p>
+          )}
+        </div>
+
         <div>
           <label className="label">Email</label>
           <input

@@ -5,6 +5,7 @@ const testDb = process.env.DATABASE_URL || 'postgresql://postgres:postgres123@lo
 export default defineConfig({
   test: {
     environment: 'node',
+    include: ['src/**/*.{test,spec}.ts'],
     env: {
       DATABASE_URL: testDb,
       REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',

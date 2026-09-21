@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, announcements, users, employees, eq, and, desc } from '@payrollpro/db';
+import { db, announcements, users, employees, eq, and, or, desc } from '@payrollpro/db';
 import { publishEvent } from '../services/redis-publisher.js';
 
 const announcementSchema = z.object({
@@ -25,9 +25,30 @@ export async function announcementRoutes(app: FastifyInstance) {
 
       const conditions = [];
 
-      // Regular employees only see published announcements
+      // Non-admins only see published announcements targeted to them
       if (!isAdmin) {
         conditions.push(eq(announcements.isPublished, true));
+
+        const emp = await db.select({
+          departmentId: employees.departmentId,
+          locationId: employees.locationId,
+        }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+
+        const userDeptId = emp.length > 0 ? emp[0].departmentId : null;
+        const userLocId = emp.length > 0 ? emp[0].locationId : null;
+
+        const audienceConditions = [eq(announcements.targetAudience, 'all')];
+        if (userDeptId) {
+          audienceConditions.push(
+            and(eq(announcements.targetAudience, 'department'), eq(announcements.targetId, userDeptId))!
+          );
+        }
+        if (userLocId) {
+          audienceConditions.push(
+            and(eq(announcements.targetAudience, 'location'), eq(announcements.targetId, userLocId))!
+          );
+        }
+        conditions.push(or(...audienceConditions)!);
       } else {
         const query = request.query as { publishedOnly?: string };
         if (query.publishedOnly === 'true') {
@@ -101,8 +122,27 @@ export async function announcementRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'Announcement not found' });
       }
 
-      if (!announcement.isPublished && !isAdmin) {
-        return reply.status(404).send({ success: false, error: 'Announcement not found' });
+      if (!isAdmin) {
+        if (!announcement.isPublished) {
+          return reply.status(404).send({ success: false, error: 'Announcement not found' });
+        }
+
+        if (announcement.targetAudience !== 'all') {
+          const emp = await db.select({
+            departmentId: employees.departmentId,
+            locationId: employees.locationId,
+          }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+
+          const userDeptId = emp.length > 0 ? emp[0].departmentId : null;
+          const userLocId = emp.length > 0 ? emp[0].locationId : null;
+
+          if (announcement.targetAudience === 'department' && announcement.targetId !== userDeptId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+          }
+          if (announcement.targetAudience === 'location' && announcement.targetId !== userLocId) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+          }
+        }
       }
 
       return reply.send({ success: true, data: announcement });

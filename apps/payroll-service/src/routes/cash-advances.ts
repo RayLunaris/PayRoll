@@ -141,6 +141,10 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
       const user = request.user;
       const { employeeId } = request.query as { employeeId?: string };
 
+      if (user.role === 'employee' && employeeId) {
+        return reply.status(403).send({ success: false, error: 'Forbidden: Karyawan tidak diizinkan menggunakan parameter employeeId' });
+      }
+
       const target = await resolveTargetEmployee(user, employeeId);
       if (!target) {
         return reply.send({ success: true, data: [] });
@@ -216,6 +220,12 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
         return reply.status(400).send({ success: false, error: 'Cash advance has already been processed' });
       }
 
+      // Prevent self-approval (approver cannot approve their own cash advance)
+      const approverEmp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+      if (approverEmp.length > 0 && existing[0].employeeId === approverEmp[0].id) {
+        return reply.status(400).send({ success: false, error: 'Tidak dapat menyetujui pengajuan kasbon milik sendiri' });
+      }
+
       if (user.role === 'manager') {
         if (!existing[0].employeeId) {
           return reply.status(400).send({ success: false, error: 'Cash advance has no associated employee' });
@@ -228,7 +238,7 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
           .from(employees)
           .where(eq(employees.id, existing[0].employeeId))
           .limit(1);
-        if (targetEmp.length === 0 || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
+        if (targetEmp.length === 0 || !targetEmp[0].departmentId || !mgrEmp[0].departmentId || targetEmp[0].departmentId !== mgrEmp[0].departmentId) {
           return reply.status(403).send({ success: false, error: 'Forbidden: Can only manage cash advances from your own department' });
         }
       }
