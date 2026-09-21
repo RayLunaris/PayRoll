@@ -15,6 +15,7 @@ export const attendances = pgTable('attendances', {
   checkOutLng: decimal('check_out_lng', { precision: 11, scale: 8 }),
   status: varchar('status', { length: 20 }).default('present'),
   overtimeHours: decimal('overtime_hours', { precision: 4, scale: 2 }).default('0'),
+  checkInPhotoUrl: text('check_in_photo_url'),
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => ({

@@ -294,4 +294,158 @@ export async function payrollRoutes(app: FastifyInstance) {
       return reply.status(500).send({ success: false, error: 'Internal server error' });
     }
   });
+
+  // Get payroll composition for dashboard chart
+  app.get('/composition', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user;
+      const { month, year } = request.query as { month?: string | number; year?: string | number };
+
+      let employeeIdsScope: string[] | null = null;
+      if (user.role === 'employee') {
+        const emp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (emp.length === 0) {
+          return reply.send({
+            success: true,
+            data: {
+              periodMonth: null,
+              periodYear: null,
+              totalEmployees: 0,
+              totalAmount: 0,
+              composition: [
+                { name: 'Gaji Pokok', value: 0 },
+                { name: 'Lembur', value: 0 },
+                { name: 'Tunjangan', value: 0 },
+                { name: 'BPJS', value: 0 },
+                { name: 'Pajak', value: 0 },
+              ],
+            },
+          });
+        }
+        employeeIdsScope = [emp[0].id];
+      } else if (user.role === 'manager') {
+        const mgrEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.send({
+            success: true,
+            data: {
+              periodMonth: null,
+              periodYear: null,
+              totalEmployees: 0,
+              totalAmount: 0,
+              composition: [
+                { name: 'Gaji Pokok', value: 0 },
+                { name: 'Lembur', value: 0 },
+                { name: 'Tunjangan', value: 0 },
+                { name: 'BPJS', value: 0 },
+                { name: 'Pajak', value: 0 },
+              ],
+            },
+          });
+        }
+        const deptEmps = await db.select({ id: employees.id }).from(employees)
+          .where(eq(employees.departmentId, mgrEmp[0].departmentId));
+        employeeIdsScope = deptEmps.map((e) => e.id);
+      }
+
+      let m: number;
+      let y: number;
+
+      if (month && year) {
+        m = parseInt(month.toString(), 10);
+        y = parseInt(year.toString(), 10);
+      } else {
+        // Find most recent period available in database for scope
+        const scopeConditions = [];
+        if (employeeIdsScope !== null) {
+          if (employeeIdsScope.length === 0) {
+            return reply.send({
+              success: true,
+              data: {
+                periodMonth: null,
+                periodYear: null,
+                totalEmployees: 0,
+                totalAmount: 0,
+                composition: [
+                  { name: 'Gaji Pokok', value: 0 },
+                  { name: 'Lembur', value: 0 },
+                  { name: 'Tunjangan', value: 0 },
+                  { name: 'BPJS', value: 0 },
+                  { name: 'Pajak', value: 0 },
+                ],
+              },
+            });
+          }
+          scopeConditions.push(inArray(payrolls.employeeId, employeeIdsScope));
+        }
+
+        const latest = await db.select({
+          month: payrolls.periodMonth,
+          year: payrolls.periodYear,
+        })
+        .from(payrolls)
+        .where(scopeConditions.length > 0 ? and(...scopeConditions) : undefined)
+        .orderBy(desc(payrolls.periodYear), desc(payrolls.periodMonth))
+        .limit(1);
+
+        if (latest.length > 0) {
+          m = latest[0].month;
+          y = latest[0].year;
+        } else {
+          const now = new Date();
+          m = now.getMonth() + 1;
+          y = now.getFullYear();
+        }
+      }
+
+      const conditions = [
+        eq(payrolls.periodMonth, m),
+        eq(payrolls.periodYear, y),
+      ];
+
+      if (employeeIdsScope !== null) {
+        conditions.push(inArray(payrolls.employeeId, employeeIdsScope));
+      }
+
+      const records = await db.select().from(payrolls).where(and(...conditions));
+
+      let totalBaseSalary = 0;
+      let totalOvertime = 0;
+      let totalAllowances = 0;
+      let totalBpjs = 0;
+      let totalTax = 0;
+      let totalNet = 0;
+
+      for (const row of records) {
+        totalBaseSalary += parseFloat(row.baseSalary || '0');
+        totalOvertime += parseFloat(row.overtimePay || '0');
+        totalAllowances += parseFloat(row.allowances || '0');
+        totalBpjs += parseFloat(row.bpjsEmployee || '0') + parseFloat(row.bpjsEmployer || '0');
+        totalTax += parseFloat(row.taxDeduction || '0');
+        totalNet += parseFloat(row.netSalary || '0');
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          periodMonth: m,
+          periodYear: y,
+          totalEmployees: records.length,
+          totalAmount: Math.round(totalNet),
+          composition: [
+            { name: 'Gaji Pokok', value: Math.round(totalBaseSalary) },
+            { name: 'Lembur', value: Math.round(totalOvertime) },
+            { name: 'Tunjangan', value: Math.round(totalAllowances) },
+            { name: 'BPJS', value: Math.round(totalBpjs) },
+            { name: 'Pajak', value: Math.round(totalTax) },
+          ],
+        },
+      });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
 }

@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 
 interface MapViewProps {
   userLocation: { lat: number; lng: number } | null;
+  userAccuracy?: number | null;
   workLocations: Array<{
     id: string;
     name: string;
@@ -14,12 +15,14 @@ interface MapViewProps {
   }>;
 }
 
-function MapViewInner({ userLocation, workLocations }: MapViewProps) {
+function MapViewInner({ userLocation, userAccuracy, workLocations }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstanceRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userMarkerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const accuracyCircleRef = useRef<any>(null);
   const locationsAddedRef = useRef(false);
   const userLocationRef = useRef(userLocation);
   userLocationRef.current = userLocation;
@@ -39,7 +42,7 @@ function MapViewInner({ userLocation, workLocations }: MapViewProps) {
       const start = userLocationRef.current;
       const defaultCenter: [number, number] = start
         ? [start.lat, start.lng]
-        : [-6.2088, 106.8456];
+        : [-8.0618388, 111.9119472];
 
       const map = L.map(mapRef.current).setView(defaultCenter, start ? 15 : 13);
       mapInstanceRef.current = map;
@@ -71,35 +74,61 @@ function MapViewInner({ userLocation, workLocations }: MapViewProps) {
         mapInstanceRef.current = null;
       }
       userMarkerRef.current = null;
+      if (accuracyCircleRef.current) {
+        accuracyCircleRef.current.remove();
+        accuracyCircleRef.current = null;
+      }
       locationsAddedRef.current = false;
     };
   }, []);
 
-  // Keep the user marker in sync with GPS fixes without rebuilding the map.
+  // Keep the user marker and accuracy circle in sync with GPS fixes without rebuilding the map.
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !userLocation) return;
 
     const updateUserMarker = async () => {
-      if (userMarkerRef.current) {
-        userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
-        return;
-      }
       const L = (await import('leaflet')).default;
       if (!mapInstanceRef.current) return;
-      const userIcon = L.divIcon({
-        className: 'user-pin-icon',
-        html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 4px rgba(239,68,68,0.35);"></div>',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
-      });
-      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
-        .addTo(map)
-        .bindPopup('<strong>Lokasi Anda</strong>');
+
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
+      } else {
+        const userIcon = L.divIcon({
+          className: 'user-pin-icon',
+          html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 4px rgba(239,68,68,0.35);"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        });
+        userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
+          .addTo(map)
+          .bindPopup('<strong>Lokasi Anda</strong>');
+      }
+
+      if (userAccuracy && userAccuracy > 0) {
+        if (accuracyCircleRef.current) {
+          accuracyCircleRef.current.setLatLng([userLocation.lat, userLocation.lng]);
+          accuracyCircleRef.current.setRadius(userAccuracy);
+        } else {
+          accuracyCircleRef.current = L.circle([userLocation.lat, userLocation.lng], {
+            radius: userAccuracy,
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.12,
+            weight: 1,
+            dashArray: '4, 4',
+          }).addTo(map);
+        }
+      } else if (accuracyCircleRef.current) {
+        accuracyCircleRef.current.remove();
+        accuracyCircleRef.current = null;
+      }
+
+      map.panTo([userLocation.lat, userLocation.lng]);
     };
 
     void updateUserMarker();
-  }, [userLocation]);
+  }, [userLocation, userAccuracy]);
 
   // Draw work-location circles and pins once the (late-loaded) list arrives.
   useEffect(() => {

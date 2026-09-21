@@ -43,14 +43,15 @@ export default function DashboardPage() {
     void (async () => {
       setLoading(true);
       try {
-        const canViewEmployees = ['manager', 'hr_admin', 'super_admin'].includes(user.role);
-        const canApprove = ['manager', 'hr_admin', 'super_admin'].includes(user.role);
+        const canViewEmployees = isManagement;
+        const canApprove = isApprover;
 
-        const [employees, attendance, approvals] = await Promise.all([
+        const [employees, todayAttendance, onLeaveData, approvals] = await Promise.all([
           canViewEmployees
             ? api.get('/employees').catch(() => ({ data: { data: [] } }))
             : Promise.resolve({ data: { data: [] } }),
-          api.get('/attendance/today').catch(() => ({ data: { data: null } })),
+          api.get('/attendance/today-summary').catch(() => ({ data: { data: { presentCount: 0, isSelfCheckedIn: false } } })),
+          api.get('/leaves/on-leave-today').catch(() => ({ data: { data: { onLeaveCount: 0, isSelfOnLeave: false } } })),
           canApprove
             ? api.get('/leaves/approvals').catch(() => ({ data: { data: [] } }))
             : Promise.resolve({ data: { data: [] } }),
@@ -60,8 +61,12 @@ export default function DashboardPage() {
 
         setStats({
           totalEmployees: employees?.data?.pagination?.total ?? employees?.data?.data?.length ?? 0,
-          presentToday: attendance?.data?.data?.checkIn ? 1 : 0,
-          onLeave: 0,
+          presentToday: isManagement
+            ? (todayAttendance?.data?.data?.presentCount ?? 0)
+            : (todayAttendance?.data?.data?.isSelfCheckedIn ? 1 : 0),
+          onLeave: isManagement
+            ? (onLeaveData?.data?.data?.onLeaveCount ?? 0)
+            : (onLeaveData?.data?.data?.isSelfOnLeave ? 1 : 0),
           pendingApprovals: approvals?.data?.data?.length ?? 0,
         });
       } catch {
@@ -74,7 +79,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, isManagement, isApprover]);
 
   return (
     <div>

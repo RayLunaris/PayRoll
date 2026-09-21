@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { db, leaves, leaveQuotas, employees, eq, and, or, desc, sql, gte, lte, inArray } from '@payrollpro/db';
-import { LeaveType } from '@payrollpro/shared-types';
+import { LeaveType, getWIBDateString } from '@payrollpro/shared-types';
 
 const leaveSchema = z.object({
   leaveType: z.enum(['annual', 'sick', 'maternity', 'paternity', 'special', 'unpaid']),
@@ -563,6 +563,88 @@ export async function leaveRoutes(app: FastifyInstance) {
         .returning();
 
       return reply.send({ success: true, data: updated[0] });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // Get count of employees currently on approved leave today
+  app.get('/on-leave-today', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user;
+      const today = getWIBDateString();
+
+      // Check if self is on leave
+      let isSelfOnLeave = false;
+      const selfEmp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+      if (selfEmp.length > 0) {
+        const myLeave = await db.select().from(leaves).where(and(
+          eq(leaves.employeeId, selfEmp[0].id),
+          eq(leaves.status, 'approved'),
+          lte(leaves.startDate, today),
+          gte(leaves.endDate, today)
+        )).limit(1);
+        isSelfOnLeave = myLeave.length > 0;
+      }
+
+      if (user.role === 'employee') {
+        return reply.send({
+          success: true,
+          data: {
+            onLeaveCount: isSelfOnLeave ? 1 : 0,
+            isSelfOnLeave,
+          },
+        });
+      }
+
+      let employeeIdsScope: string[] | null = null;
+      if (user.role === 'manager') {
+        const mgrEmp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.send({
+            success: true,
+            data: { onLeaveCount: 0, isSelfOnLeave },
+          });
+        }
+        const deptEmps = await db.select({ id: employees.id }).from(employees)
+          .where(eq(employees.departmentId, mgrEmp[0].departmentId));
+        employeeIdsScope = deptEmps.map((e) => e.id);
+        if (employeeIdsScope.length === 0) {
+          return reply.send({
+            success: true,
+            data: { onLeaveCount: 0, isSelfOnLeave },
+          });
+        }
+      }
+
+      const conditions = [
+        eq(leaves.status, 'approved'),
+        lte(leaves.startDate, today),
+        gte(leaves.endDate, today),
+      ];
+
+      if (employeeIdsScope !== null) {
+        conditions.push(inArray(leaves.employeeId, employeeIdsScope));
+      }
+
+      const activeLeaves = await db.select({
+        count: sql<number>`count(distinct ${leaves.employeeId})`,
+      })
+      .from(leaves)
+      .where(and(...conditions));
+
+      const onLeaveCount = Number(activeLeaves[0]?.count || 0);
+
+      return reply.send({
+        success: true,
+        data: {
+          onLeaveCount,
+          isSelfOnLeave,
+        },
+      });
     } catch (error) {
       app.log.error(error);
       return reply.status(500).send({ success: false, error: 'Internal server error' });

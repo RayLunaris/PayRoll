@@ -90,6 +90,11 @@ const navGroups: NavGroupData[] = [
         title: 'Lembur',
         icon: Clock,
         href: '/overtime',
+        children: [
+          { id: 'ot-req', title: 'Pengajuan Lembur', href: '/overtime/request' },
+          { id: 'ot-hist', title: 'Riwayat Lembur', href: '/overtime/history' },
+          { id: 'ot-appr', title: 'Persetujuan Lembur', href: '/overtime/approvals', roles: ['hr_admin', 'manager', 'super_admin'] },
+        ],
       },
       {
         id: 'shift',

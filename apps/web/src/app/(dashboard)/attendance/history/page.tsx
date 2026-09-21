@@ -12,6 +12,7 @@ interface AttendanceRecord {
   checkOut: string | null;
   status: string;
   overtimeHours: string;
+  checkInPhotoUrl?: string | null;
 }
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
@@ -169,9 +170,19 @@ export default function AttendanceHistoryPage() {
                     <tr key={record.id}>
                       <td>{formatDate(record.date)}</td>
                       <td>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-gray-400" />
-                          {record.checkIn ? formatTime(record.checkIn) : '-'}
+                        <div className="flex items-center gap-2">
+                          {record.checkInPhotoUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={record.checkInPhotoUrl}
+                              alt="Selfie"
+                              className="w-7 h-7 rounded-full object-cover border border-gray-300 shrink-0"
+                              title="Foto Selfie Presensi"
+                            />
+                          ) : (
+                            <Clock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          )}
+                          <span>{record.checkIn ? formatTime(record.checkIn) : '-'}</span>
                         </div>
                       </td>
                       <td>{record.checkOut ? formatTime(record.checkOut) : '-'}</td>

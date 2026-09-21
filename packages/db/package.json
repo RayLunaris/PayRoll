@@ -23,6 +23,7 @@
   "dependencies": {
     "bcrypt": "^5.1.1",
     "drizzle-orm": "^0.33.0",
+    "ioredis": "^6.0.0",
     "postgres": "^3.4.4"
   },
   "devDependencies": {

@@ -19,8 +19,8 @@ interface WorkLocation {
 
 const ALLOWED_ROLES = ['hr_admin', 'super_admin'];
 
-const DEFAULT_LAT = -6.2;
-const DEFAULT_LNG = 106.816666;
+const DEFAULT_LAT = -8.0618388;
+const DEFAULT_LNG = 111.9119472;
 
 const toNumber = (value: number | string) => Number(value);
 

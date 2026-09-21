@@ -10,9 +10,9 @@ import {
   apiDeleteUser,
 } from './helpers';
 
-// Head Office seeded coordinate (radius 100m)
-const HEAD_OFFICE_LAT = -6.2088;
-const HEAD_OFFICE_LNG = 106.8456;
+// Head Office (Djavasoft) seeded coordinate (radius 100m)
+const HEAD_OFFICE_LAT = -8.0618388;
+const HEAD_OFFICE_LNG = 111.9119472;
 
 const psql = (sql: string) =>
   execSync(`docker exec payrollpro-postgres psql -q -U postgres -d payrollpro -t -A -c "${sql}"`, {

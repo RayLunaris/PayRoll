@@ -1,4 +1,4 @@
-import { db, overtimeRates, attendances, eq, and, gte, lte } from '@payrollpro/db';
+import { db, overtimeRates, attendances, overtimeRequests, eq, and, gte, lte } from '@payrollpro/db';
 
 export interface OvertimePayResult {
   totalHours: number;
@@ -8,10 +8,14 @@ export interface OvertimePayResult {
     hours: number;
     rateMultiplier: number;
     pay: number;
+    source: 'auto' | 'approved_request';
   }>;
 }
 
-// Calculate overtime pay for an employee in a period with tiered rates
+// Calculate overtime pay for an employee in a period with tiered rates.
+// If a day has an approved overtime_request, its hours override the auto-checkout
+// value from the attendances table for that day (replace, not add) to avoid
+// double-counting.
 export async function calculateOvertimePay(
   employeeId: string,
   startDate: string,
@@ -19,14 +23,35 @@ export async function calculateOvertimePay(
   monthlyBaseSalary: number,
   holidays: string[] = []
 ): Promise<OvertimePayResult> {
-  const records = await db.select().from(attendances)
-    .where(and(
-      eq(attendances.employeeId, employeeId),
-      gte(attendances.date, startDate),
-      lte(attendances.date, endDate)
-    ));
+  const [records, approvedRequests] = await Promise.all([
+    db.select().from(attendances)
+      .where(and(
+        eq(attendances.employeeId, employeeId),
+        gte(attendances.date, startDate),
+        lte(attendances.date, endDate)
+      )),
+    db.select().from(overtimeRequests)
+      .where(and(
+        eq(overtimeRequests.employeeId, employeeId),
+        eq(overtimeRequests.status, 'approved'),
+        gte(overtimeRequests.date, startDate),
+        lte(overtimeRequests.date, endDate)
+      )),
+  ]);
 
-  if (records.length === 0) {
+  // Build a map: date → approved request hours (takes priority over auto)
+  const approvedMap = new Map<string, number>();
+  for (const req of approvedRequests) {
+    approvedMap.set(req.date, parseFloat(req.hours || '0'));
+  }
+
+  // Collect all dates that have any overtime (auto or approved request)
+  const allDates = new Set<string>([
+    ...records.map((r) => r.date),
+    ...approvedRequests.map((r) => r.date),
+  ]);
+
+  if (allDates.size === 0) {
     return { totalHours: 0, overtimePay: 0, detail: [] };
   }
 
@@ -48,14 +73,24 @@ export async function calculateOvertimePay(
 
   const holidaySet = new Set(holidays);
 
+  // Build attendance lookup for auto hours
+  const autoMap = new Map<string, number>();
   for (const att of records) {
-    const hours = parseFloat(att.overtimeHours || '0');
+    autoMap.set(att.date, parseFloat(att.overtimeHours || '0'));
+  }
+
+  for (const dateStr of allDates) {
+    // Approved request overrides auto-checkout hours for this day
+    const hasApproved = approvedMap.has(dateStr);
+    const hours = hasApproved ? approvedMap.get(dateStr)! : (autoMap.get(dateStr) ?? 0);
+    const source: 'auto' | 'approved_request' = hasApproved ? 'approved_request' : 'auto';
+
     if (hours <= 0) continue;
 
-    const date = new Date(att.date);
+    const date = new Date(dateStr);
     const dayOfWeek = date.getUTCDay(); // 0=Sunday, 6=Saturday
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const isHoliday = holidaySet.has(att.date);
+    const isHoliday = holidaySet.has(dateStr);
 
     let pay = 0;
     let effectiveMultiplier = 1.5;
@@ -86,10 +121,11 @@ export async function calculateOvertimePay(
     totalPay += roundedPay;
 
     detail.push({
-      date: att.date,
+      date: dateStr,
       hours,
       rateMultiplier: effectiveMultiplier,
       pay: roundedPay,
+      source,
     });
   }
 
@@ -99,3 +135,4 @@ export async function calculateOvertimePay(
     detail,
   };
 }
+
