@@ -6,15 +6,21 @@ declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: {
       id: string;
+      userId?: string;
       email: string;
       role: UserRole;
+      employeeId?: string;
+      departmentId?: string;
       type?: string;
       jti?: string;
     };
     user: {
       id: string;
+      userId?: string;
       email: string;
       role: UserRole;
+      employeeId?: string;
+      departmentId?: string;
       type?: string;
       jti?: string;
     };

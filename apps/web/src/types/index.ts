@@ -212,3 +212,20 @@ export interface PaginatedResponse<T> {
     totalPages: number
   }
 }
+
+export type ActivityType =
+  | 'attendance_check_in'
+  | 'attendance_check_out'
+  | 'leave_approved'
+  | 'leave_rejected'
+
+export interface ActivityItem {
+  id: string
+  type: ActivityType | string
+  title: string
+  description: string
+  employeeId: string
+  employeeName: string
+  timestamp: string
+  sourceService: 'attendance-service' | 'leave-service' | string
+}

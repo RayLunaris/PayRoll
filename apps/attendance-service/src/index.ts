@@ -5,6 +5,7 @@ import './types/index.js';
 import { db, users, eq } from '@payrollpro/db';
 import cron from 'node-cron';
 import { attendanceRoutes } from './routes/attendance.js';
+import { attendanceActivityRoutes } from './routes/activities.js';
 import { getWIBDateString, getWIBTimeString } from '@payrollpro/shared-types';
 
 export async function buildApp() {
@@ -46,6 +47,8 @@ export async function buildApp() {
 
   // Register routes
   await app.register(attendanceRoutes, { prefix: '/api/attendance' });
+  await app.register(attendanceActivityRoutes, { prefix: '/api/attendance' });
+  await app.register(attendanceActivityRoutes, { prefix: '/' });
 
   // Health check
   app.get('/health', async () => {

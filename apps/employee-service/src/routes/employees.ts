@@ -220,4 +220,19 @@ export async function employeeRoutes(app: FastifyInstance) {
       return reply.status(500).send({ success: false, error: 'Internal server error' });
     }
   });
+
+  // Get active employee IDs by department (helper for department scoping in manager views)
+  app.get('/by-department/:departmentId', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { departmentId } = request.params as { departmentId: string };
+      const team = await db.select({ id: employees.id }).from(employees)
+        .where(and(eq(employees.departmentId, departmentId), eq(employees.isActive, true)));
+      return reply.send({ success: true, data: team.map((t) => t.id) });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
 }

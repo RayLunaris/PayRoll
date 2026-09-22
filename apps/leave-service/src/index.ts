@@ -4,6 +4,7 @@ import jwt from '@fastify/jwt';
 import './types/index.js';
 import { db, users, eq } from '@payrollpro/db';
 import { leaveRoutes } from './routes/leaves.js';
+import { leaveActivityRoutes } from './routes/activities.js';
 
 
 export async function buildApp() {
@@ -45,6 +46,8 @@ export async function buildApp() {
 
   // Register routes
   await app.register(leaveRoutes, { prefix: '/api/leaves' });
+  await app.register(leaveActivityRoutes, { prefix: '/api/leaves' });
+  await app.register(leaveActivityRoutes, { prefix: '/' });
 
   // Health check
   app.get('/health', async () => {

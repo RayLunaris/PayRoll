@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { hash, compare } from 'bcrypt';
-import { db, users, employees, departments, positions, workLocations, eq, desc } from '@payrollpro/db';
+import { db, users, employees, departments, positions, workLocations, eq, or, desc } from '@payrollpro/db';
 import { UserRole } from '@payrollpro/shared-types';
 import { requireRole } from '../middleware/auth.js';
 import {
@@ -89,9 +89,29 @@ export async function authRoutes(app: FastifyInstance) {
       // Reset the counter on a successful login.
       await clearLoginLockout(body.email);
 
+      // Resolve employee profile (employeeId and departmentId)
+      let employeeId = user.employeeId;
+      let departmentId: string | null = null;
+      const emp = await db.select({ id: employees.id, departmentId: employees.departmentId })
+        .from(employees)
+        .where(user.employeeId ? or(eq(employees.id, user.employeeId), eq(employees.userId, user.id)) : eq(employees.userId, user.id))
+        .limit(1);
+      if (emp.length > 0) {
+        employeeId = emp[0].id;
+        departmentId = emp[0].departmentId;
+      }
+
       // Generate tokens with jti for rotation tracking
       const accessToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role as UserRole, type: 'access' },
+        {
+          id: user.id,
+          userId: user.id,
+          email: user.email,
+          role: user.role as UserRole,
+          employeeId: employeeId || undefined,
+          departmentId: departmentId || undefined,
+          type: 'access',
+        },
         { expiresIn: '15m' }
       );
 
@@ -106,15 +126,6 @@ export async function authRoutes(app: FastifyInstance) {
       // Update last login
       await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, user.id));
 
-      // Resolve employeeId if not explicitly stored in user record
-      let employeeId = user.employeeId;
-      if (!employeeId) {
-        const emp = await db.select({ id: employees.id }).from(employees).where(eq(employees.userId, user.id)).limit(1);
-        if (emp.length > 0) {
-          employeeId = emp[0].id;
-        }
-      }
-
       return reply.send({
         success: true,
         data: {
@@ -123,6 +134,7 @@ export async function authRoutes(app: FastifyInstance) {
             email: user.email,
             role: user.role,
             employeeId: employeeId || undefined,
+            departmentId: departmentId || undefined,
           },
           accessToken,
           refreshToken,
@@ -263,9 +275,29 @@ export async function authRoutes(app: FastifyInstance) {
 
       const user = result[0];
 
+      // Resolve employee profile (employeeId and departmentId)
+      let employeeId = user.employeeId;
+      let departmentId: string | null = null;
+      const emp = await db.select({ id: employees.id, departmentId: employees.departmentId })
+        .from(employees)
+        .where(user.employeeId ? or(eq(employees.id, user.employeeId), eq(employees.userId, user.id)) : eq(employees.userId, user.id))
+        .limit(1);
+      if (emp.length > 0) {
+        employeeId = emp[0].id;
+        departmentId = emp[0].departmentId;
+      }
+
       // Issue new access token
       const accessToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role as UserRole, type: 'access' },
+        {
+          id: user.id,
+          userId: user.id,
+          email: user.email,
+          role: user.role as UserRole,
+          employeeId: employeeId || undefined,
+          departmentId: departmentId || undefined,
+          type: 'access',
+        },
         { expiresIn: '15m' }
       );
 

@@ -7,6 +7,7 @@ import { registerRateLimit } from './plugins/rate-limit.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 import { registerProxy } from './plugins/proxy.js';
 import { docsRoutes } from './routes/docs.js';
+import { dashboardRoutes } from './routes/dashboard.js';
 
 export async function buildApp() {
   const JWT_SECRET = process.env.JWT_SECRET;
@@ -93,7 +94,10 @@ export async function buildApp() {
     };
   });
 
-  // 9. Reverse Proxy Registration
+  // 9. Dashboard Aggregation Routes
+  await app.register(dashboardRoutes, { prefix: '/api/dashboard' });
+
+  // 10. Reverse Proxy Registration
   await registerProxy(app);
 
   return app;

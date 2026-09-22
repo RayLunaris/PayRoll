@@ -38,7 +38,9 @@ export async function registerProxy(app: FastifyInstance) {
 
         // Pass user identity headers if authenticated
         if (request.user) {
-          headers['x-user-id'] = request.user.id;
+          headers['x-user-id'] = request.user.id || (request.user as any).userId;
+          headers['x-employee-id'] = (request.user as any).employeeId || '';
+          headers['x-department-id'] = (request.user as any).departmentId || '';
           headers['x-user-email'] = request.user.email;
           headers['x-user-role'] = request.user.role;
         }
