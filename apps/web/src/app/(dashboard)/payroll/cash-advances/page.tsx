@@ -126,14 +126,20 @@ export default function CashAdvancesPage() {
   }, []);
 
   const fetchMaxAmount = useCallback(async () => {
-    const employeeId = user?.employeeId;
-    if (!employeeId) {
-      setMaxAmountStatus('unknown');
-      return;
-    }
-
     try {
-      const response = await api.get<{ data: Employee }>(`/employees/${employeeId}`);
+      // Prioritize /employees/me, falling back to /employees/${user?.employeeId}
+      let response;
+      try {
+        response = await api.get<{ data: Employee }>('/employees/me');
+      } catch {
+        if (user?.employeeId) {
+          response = await api.get<{ data: Employee }>(`/employees/${user.employeeId}`);
+        } else {
+          setMaxAmountStatus('unknown');
+          return;
+        }
+      }
+
       const baseSalary = Number(response.data.data?.baseSalary || 0);
       if (baseSalary > 0) {
         const limit = Math.round(baseSalary * MAX_LIMIT_PERCENT);
@@ -147,7 +153,10 @@ export default function CashAdvancesPage() {
         setMaxAmountStatus('unknown');
       }
     } catch (err) {
-      console.error('Failed to fetch salary for cash advance limit:', err);
+      const status = getApiErrorStatus(err);
+      if (status !== 403 && status !== 404) {
+        console.error('Failed to fetch salary for cash advance limit:', err);
+      }
       setMaxAmountStatus('unknown');
     }
   }, [user?.employeeId, setValue]);

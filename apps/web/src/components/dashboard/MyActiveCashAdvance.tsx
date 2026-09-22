@@ -26,7 +26,11 @@ function formatRupiah(value: string | number): string {
   }).format(num);
 }
 
-export default function MyActiveCashAdvance() {
+export default function MyActiveCashAdvance({
+  onStatusLoaded,
+}: {
+  onStatusLoaded?: (hasData: boolean) => void;
+}) {
   const [activeAdvance, setActiveAdvance] = useState<CashAdvanceRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -43,9 +47,13 @@ export default function MyActiveCashAdvance() {
             (ca: CashAdvanceRecord) => ca.status === 'approved'
           );
           setActiveAdvance(activeItem || null);
+          onStatusLoaded?.(Boolean(activeItem));
+        } else {
+          onStatusLoaded?.(false);
         }
       } catch (err) {
         console.error('Failed to load active cash advance:', err);
+        if (active) onStatusLoaded?.(false);
       } finally {
         if (active) setLoading(false);
       }
@@ -54,7 +62,7 @@ export default function MyActiveCashAdvance() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [onStatusLoaded]);
 
   // Strict Rule: If not loading and no active cash advance exists, return null so nothing renders in DOM
   if (!loading && !activeAdvance) {
@@ -63,7 +71,7 @@ export default function MyActiveCashAdvance() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-card p-6 animate-pulse">
+      <div className="bg-white rounded-xl shadow-card p-5 animate-pulse">
         <div className="h-6 bg-gray-100 rounded w-1/3 mb-4" />
         <div className="h-10 bg-gray-100 rounded w-2/3 mb-2" />
         <div className="h-4 bg-gray-100 rounded w-1/2" />
@@ -72,7 +80,7 @@ export default function MyActiveCashAdvance() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-card p-6 flex flex-col justify-between border-l-4 border-l-amber-500">
+    <div className="bg-white rounded-xl shadow-card p-5 flex flex-col justify-between border-l-4 border-l-amber-500">
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">

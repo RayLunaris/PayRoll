@@ -101,9 +101,9 @@ export default function MyLatestSlip() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-card p-6 flex flex-col justify-between">
+    <div className="bg-white rounded-xl shadow-card p-5 flex flex-col justify-between">
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
               <FileText className="w-5 h-5" />
@@ -113,43 +113,94 @@ export default function MyLatestSlip() {
               <p className="text-xs text-gray-500">Take-home pay & rincian pendapatan</p>
             </div>
           </div>
-          {latestSlip && getStatusBadge(latestSlip.status)}
+          {latestSlip ? (
+            getStatusBadge(latestSlip.status)
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+              <Clock className="w-3 h-3" />
+              Periode Berjalan
+            </span>
+          )}
         </div>
 
         {loading ? (
-          <div className="animate-pulse space-y-3 my-4">
-            <div className="h-6 bg-gray-100 rounded w-1/3" />
-            <div className="h-10 bg-gray-100 rounded w-2/3" />
+          <div className="animate-pulse space-y-2.5 my-2">
+            <div className="h-16 bg-gray-100 rounded-lg" />
+            <div className="h-10 bg-gray-100 rounded w-full" />
           </div>
         ) : latestSlip ? (
-          <div className="my-3 p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
-            <p className="text-xs text-gray-500 font-medium">
-              Periode {MONTH_NAMES[latestSlip.periodMonth] || latestSlip.periodMonth} {latestSlip.periodYear}
-            </p>
-            <p className="text-2xl font-bold text-gray-900 tracking-tight">
-              {formatRupiah(latestSlip.netSalary)}
-            </p>
-            <p className="text-xs text-gray-500 pt-1">
-              Gaji bersih yang ditransfer ke rekening Anda
-            </p>
+          <div className="space-y-2.5 my-2">
+            <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-100 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-medium">
+                  Periode {MONTH_NAMES[latestSlip.periodMonth] || latestSlip.periodMonth} {latestSlip.periodYear}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-medium border border-emerald-200">
+                  Gaji Bersih
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 tracking-tight">
+                {formatRupiah(latestSlip.netSalary)}
+              </p>
+              <p className="text-xs text-gray-500 pt-0.5">
+                Ditransfer ke rekening terdaftar
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
+                <p className="text-[11px] text-gray-500">Status Transfer</p>
+                <p className="text-xs font-semibold text-gray-800 mt-0.5">Selesai Dibayar</p>
+              </div>
+              <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
+                <p className="text-[11px] text-gray-500">Dokumen Slip</p>
+                <p className="text-xs font-semibold text-gray-800 mt-0.5">PDF Digital Resmi</p>
+              </div>
+            </div>
           </div>
         ) : (
-          <div className="my-3 p-4 rounded-xl bg-amber-50/60 border border-amber-200/60 flex items-start gap-3">
-            <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-amber-900">
-                Menunggu diproses HR
-              </p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Slip gaji untuk periode berjalan belum diterbitkan atau sedang dalam tahap kalkulasi tim payroll.
-              </p>
+          <div className="space-y-2.5 my-2">
+            <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/60 flex items-start gap-2.5">
+              <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-amber-900">
+                  Menunggu Kalkulasi Tim Payroll
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                  Slip periode berjalan belum diterbitkan atau sedang dalam tahap validasi jam kerja & rekap lembur.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-gray-50/80 border border-gray-100 space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-600 font-medium flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  Alur Siklus Penggajian
+                </span>
+                <span className="text-[10px] text-gray-400">Estimasi akhir bulan</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
+                <div className="p-1 rounded bg-white border border-gray-150">
+                  <span className="block text-gray-400">1. Presensi</span>
+                  <span className="text-emerald-600 font-semibold">Tercatat</span>
+                </div>
+                <div className="p-1 rounded bg-blue-50/70 border border-blue-200/60">
+                  <span className="block text-blue-700">2. Review HR</span>
+                  <span className="text-blue-700 font-semibold">Proses</span>
+                </div>
+                <div className="p-1 rounded bg-white border border-gray-150">
+                  <span className="block text-gray-400">3. Terbit</span>
+                  <span className="text-gray-400 font-semibold">Menunggu</span>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      <div className="pt-3 mt-2 border-t border-gray-100 flex items-center justify-between text-xs">
-        <span className="text-gray-500">Histori & download PDF</span>
+      <div className="pt-2.5 mt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+        <span className="text-gray-500">Histori & unduh arsip PDF</span>
         <Link
           href="/payroll/slips"
           className="text-emerald-600 hover:text-emerald-700 font-medium inline-flex items-center gap-1 hover:underline"

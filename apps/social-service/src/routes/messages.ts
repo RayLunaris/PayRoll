@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, messages, users, employees, eq, and, or, asc, desc, inArray } from '@payrollpro/db';
+import { db, messages, users, employees, departments, positions, eq, ne, and, or, asc, desc, inArray } from '@payrollpro/db';
 import { publishEvent } from '../services/redis-publisher.js';
 
 const messageSchema = z.object({
@@ -111,7 +111,7 @@ export async function messageRoutes(app: FastifyInstance) {
           name: employees.fullName,
         })
         .from(users)
-        .leftJoin(employees, eq(users.id, employees.userId))
+        .leftJoin(employees, or(eq(users.id, employees.userId), eq(users.employeeId, employees.id)))
         .where(inArray(users.id, partnerIds));
 
         for (const d of details) {
@@ -140,7 +140,81 @@ export async function messageRoutes(app: FastifyInstance) {
     }
   });
 
-  // 3. Get conversation history with specific user (and mark incoming unread messages as read)
+  // 3. Get directory contacts for starting new 1-on-1 chats
+  app.get('/contacts', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user;
+      const query = (request.query as { search?: string }) || {};
+      const search = query.search ? query.search.trim().toLowerCase() : '';
+
+      const allUsers = await db.select({
+        id: users.id,
+        email: users.email,
+        role: users.role,
+        employeeId: employees.id,
+        nip: employees.nip,
+        fullName: employees.fullName,
+        departmentName: departments.name,
+        positionName: positions.name,
+        avatarUrl: employees.photoUrl,
+      })
+      .from(users)
+      .leftJoin(employees, or(eq(users.id, employees.userId), eq(users.employeeId, employees.id)))
+      .leftJoin(departments, eq(employees.departmentId, departments.id))
+      .leftJoin(positions, eq(employees.positionId, positions.id))
+      .where(and(
+        ne(users.id, user.id),
+        eq(users.isActive, true)
+      ))
+      .orderBy(asc(employees.fullName), asc(users.email));
+
+      const contactMap = new Map<string, {
+        userId: string;
+        name: string;
+        email: string;
+        role: string;
+        nip: string | null;
+        department: string | null;
+        position: string | null;
+        avatarUrl: string | null;
+      }>();
+
+      for (const u of allUsers) {
+        if (!contactMap.has(u.id)) {
+          contactMap.set(u.id, {
+            userId: u.id,
+            name: u.fullName || u.email.split('@')[0],
+            email: u.email,
+            role: u.role,
+            nip: u.nip || null,
+            department: u.departmentName || null,
+            position: u.positionName || null,
+            avatarUrl: u.avatarUrl || null,
+          });
+        }
+      }
+
+      let contacts = Array.from(contactMap.values());
+      if (search) {
+        contacts = contacts.filter((c) =>
+          c.name.toLowerCase().includes(search) ||
+          c.email.toLowerCase().includes(search) ||
+          (c.nip && c.nip.toLowerCase().includes(search)) ||
+          (c.department && c.department.toLowerCase().includes(search)) ||
+          (c.position && c.position.toLowerCase().includes(search))
+        );
+      }
+
+      return reply.send({ success: true, data: contacts });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // 4. Get conversation history with specific user (and mark incoming unread messages as read)
   app.get('/:userId', {
     preHandler: [app.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {

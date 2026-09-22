@@ -67,9 +67,9 @@ export default function MyLeaveSummary() {
   const annualRemaining = annualQuota?.remainingQuota ?? Math.max(0, annualTotal - annualUsed);
 
   return (
-    <div className="bg-white rounded-xl shadow-card p-6 flex flex-col justify-between">
+    <div className="bg-white rounded-xl shadow-card p-5 flex flex-col justify-between">
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
               <CalendarDays className="w-5 h-5" />
@@ -89,18 +89,18 @@ export default function MyLeaveSummary() {
         </div>
 
         {loading ? (
-          <div className="animate-pulse space-y-3 my-4">
-            <div className="h-10 bg-gray-100 rounded-lg" />
-            <div className="h-6 bg-gray-100 rounded w-2/3" />
+          <div className="animate-pulse space-y-2.5 my-2">
+            <div className="h-16 bg-gray-100 rounded-lg" />
+            <div className="h-10 bg-gray-100 rounded w-full" />
           </div>
         ) : (
-          <div className="space-y-4 my-2">
+          <div className="space-y-2.5 my-2">
             {/* Annual Leave highlight */}
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-              <div className="flex items-baseline justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Cuti Tahunan</span>
+            <div className="bg-gray-50/80 rounded-xl p-3.5 border border-gray-100">
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="text-sm font-semibold text-gray-800">Cuti Tahunan</span>
                 <div className="text-right">
-                  <span className="text-2xl font-bold text-gray-900">{annualRemaining}</span>
+                  <span className="text-xl font-bold text-blue-600">{annualRemaining}</span>
                   <span className="text-xs text-gray-500 ml-1">/ {annualTotal} hari tersisa</span>
                 </div>
               </div>
@@ -112,14 +112,21 @@ export default function MyLeaveSummary() {
                   }}
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Terpakai: <span className="font-semibold text-gray-700">{annualUsed}</span> hari
-              </p>
+              <div className="flex items-center justify-between text-xs text-gray-500 mt-2 pt-1 border-t border-gray-100">
+                <span>Terpakai: <strong className="text-gray-700 font-semibold">{annualUsed}</strong> hari</span>
+                <span>Total Hak Cuti: <strong className="text-gray-700 font-semibold">{annualTotal}</strong> hari</span>
+              </div>
             </div>
 
             {/* Other Quotas */}
             {quotas.filter((q) => q.leaveType !== 'annual').length > 0 && (
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <div
+                className={`grid ${
+                  quotas.filter((q) => q.leaveType !== 'annual').length <= 3
+                    ? 'grid-cols-3'
+                    : 'grid-cols-2 sm:grid-cols-4'
+                } gap-2 text-xs`}
+              >
                 {quotas
                   .filter((q) => q.leaveType !== 'annual')
                   .slice(0, 4)
@@ -127,9 +134,14 @@ export default function MyLeaveSummary() {
                     const label = leaveTypeLabels[q.leaveType] || q.leaveType;
                     const remaining = q.remainingQuota ?? Math.max(0, q.totalQuota - q.usedQuota);
                     return (
-                      <div key={q.leaveType} className="p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-                        <p className="text-gray-500 truncate">{label}</p>
-                        <p className="text-sm font-bold text-gray-800 mt-0.5">
+                      <div
+                        key={q.leaveType}
+                        className="p-2.5 bg-gray-50 hover:bg-gray-100/70 transition-colors rounded-lg border border-gray-100 flex flex-col justify-between"
+                      >
+                        <p className="text-[11px] font-medium text-gray-500 truncate" title={label}>
+                          {label}
+                        </p>
+                        <p className="text-sm font-bold text-gray-800 mt-1">
                           {remaining} <span className="text-[10px] font-normal text-gray-500">hari</span>
                         </p>
                       </div>
@@ -141,7 +153,7 @@ export default function MyLeaveSummary() {
         )}
       </div>
 
-      <div className="pt-3 mt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+      <div className="pt-2.5 mt-2 border-t border-gray-100 flex items-center justify-between text-xs">
         {pendingCount > 0 ? (
           <span className="text-amber-600 font-medium flex items-center gap-1">
             <Clock className="w-3.5 h-3.5" />

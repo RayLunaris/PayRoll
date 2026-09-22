@@ -167,9 +167,9 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
 
   const workspaces = [
     'PT PayrollPro Indonesia',
-    'Kantor Cabang Jakarta',
-    'Kantor Cabang Surabaya',
   ]
+
+  const canSwitch = workspaces.length > 1
 
   if (collapsed) {
     return (
@@ -187,8 +187,10 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
   return (
     <div className="relative mb-3">
       <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors select-none group border border-border/40 bg-background/50"
+        onClick={() => canSwitch && setIsOpen(!isOpen)}
+        className={`flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors select-none group border border-border/40 bg-background/50 ${
+          canSwitch ? 'hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer' : ''
+        }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-[6px] bg-primary text-primary-foreground flex items-center justify-center font-bold text-[13px] shadow-sm shrink-0">
@@ -203,13 +205,15 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
             </span>
           </div>
         </div>
-        <ChevronDown
-          className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground/80 transition-colors shrink-0 ml-1"
-          strokeWidth={1.5}
-        />
+        {canSwitch && (
+          <ChevronDown
+            className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground/80 transition-colors shrink-0 ml-1"
+            strokeWidth={1.5}
+          />
+        )}
       </div>
 
-      {isOpen && (
+      {canSwitch && isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute top-[48px] left-0 w-full bg-card border border-border/60 rounded-lg shadow-lg z-50 py-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100">

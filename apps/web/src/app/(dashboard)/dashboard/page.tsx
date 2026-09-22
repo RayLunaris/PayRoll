@@ -45,6 +45,7 @@ export default function DashboardPage() {
     pendingApprovals: 0,
   });
   const [loadingStats, setLoadingStats] = useState(false);
+  const [hasActiveCashAdvance, setHasActiveCashAdvance] = useState(false);
 
   useEffect(() => {
     if (!user || isEmployee) return;
@@ -228,10 +229,14 @@ export default function DashboardPage() {
           <MyAttendanceToday />
 
           {/* Employee Administration Grid: Leave Summary, Latest Slip, and Active Cash Advance (if any) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+          <div
+            className={`grid grid-cols-1 ${
+              hasActiveCashAdvance ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-2'
+            } gap-6 mb-6`}
+          >
             <MyLeaveSummary />
             <MyLatestSlip />
-            <MyActiveCashAdvance />
+            <MyActiveCashAdvance onStatusLoaded={setHasActiveCashAdvance} />
           </div>
 
           {/* Employee History & Social: 7-day attendance history & company feed */}

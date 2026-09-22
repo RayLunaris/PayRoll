@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, employees, departments, positions, workLocations, eq, and, desc, sql } from '@payrollpro/db';
+import { db, employees, departments, positions, workLocations, users, eq, and, or, desc, sql } from '@payrollpro/db';
 import type { SQL } from '@payrollpro/db';
 import { requireRole } from '../middleware/auth.js';
 
@@ -98,6 +98,67 @@ export async function employeeRoutes(app: FastifyInstance) {
     }
   });
 
+  // Get current user's employee profile
+  app.get('/me', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user;
+      const conditions = [eq(employees.userId, user.id)];
+      if ((user as any).employeeId) {
+        conditions.push(eq(employees.id, (user as any).employeeId));
+      }
+      const result = await db.select().from(employees).where(or(...conditions)).limit(1);
+
+      if (result.length === 0) {
+        // Auto-provision if missing for logged-in user
+        const [depts, pos, locs, allEmps] = await Promise.all([
+          db.select().from(departments),
+          db.select().from(positions),
+          db.select().from(workLocations),
+          db.select({ nip: employees.nip }).from(employees),
+        ]);
+        const defaultDept = depts.find(d => d.name.toLowerCase().includes('information') || d.name.toLowerCase().includes('it')) || depts[0];
+        const defaultPos = pos.find(p => p.name.toLowerCase().includes('staff')) || pos[0];
+        const defaultLoc = locs[0];
+
+        let nextNum = 1;
+        for (const emp of allEmps) {
+          const match = emp.nip.match(/^EMP(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num >= nextNum) nextNum = num + 1;
+          }
+        }
+        const nip = 'EMP' + String(nextNum).padStart(3, '0');
+        const today = new Date().toISOString().split('T')[0];
+        const rawName = user.email.split('@')[0];
+        const fullName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
+        const [newEmp] = await db.insert(employees).values({
+          userId: user.id,
+          nip,
+          fullName,
+          departmentId: defaultDept?.id,
+          positionId: defaultPos?.id,
+          locationId: defaultLoc?.id,
+          joinDate: today,
+          baseSalary: '8000000.00',
+          isActive: true,
+        }).returning();
+
+        await db.update(users).set({ employeeId: newEmp.id }).where(eq(users.id, user.id));
+
+        return reply.send({ success: true, data: newEmp });
+      }
+
+      return reply.send({ success: true, data: result[0] });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
   // Get employee by ID (own record only for employees; HR/Manager any)
   app.get('/:id', {
     preHandler: [app.authenticate],
@@ -105,6 +166,19 @@ export async function employeeRoutes(app: FastifyInstance) {
     try {
       const user = request.user;
       const { id } = request.params as { id: string };
+
+      if (id === 'me') {
+        const conditions = [eq(employees.userId, user.id)];
+        if ((user as any).employeeId) {
+          conditions.push(eq(employees.id, (user as any).employeeId));
+        }
+        const result = await db.select().from(employees).where(or(...conditions)).limit(1);
+        if (result.length === 0) {
+          return reply.status(404).send({ success: false, error: 'Employee not found' });
+        }
+        return reply.send({ success: true, data: result[0] });
+      }
+
       const result = await db.select().from(employees).where(eq(employees.id, id)).limit(1);
 
       if (result.length === 0) {
@@ -112,17 +186,32 @@ export async function employeeRoutes(app: FastifyInstance) {
       }
 
       if (user.role === 'employee') {
-        const own = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-        if (own.length === 0 || own[0].id !== id) {
-          return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+        const target = result[0];
+        const isOwn =
+          target.userId === user.id ||
+          target.id === (user as any).employeeId ||
+          ((user as any).employeeId && (user as any).employeeId === id);
+
+        if (!isOwn) {
+          const own = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          if (own.length === 0 || own[0].id !== id) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+          }
         }
       } else if (user.role === 'manager') {
         const target = result[0];
-        const mgr = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
-        const sameDept = mgr.length > 0 && !!mgr[0].departmentId && !!target.departmentId && target.departmentId === mgr[0].departmentId;
-        const isSelf = mgr.length > 0 && mgr[0].id === id;
-        if (!sameDept && !isSelf) {
-          return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+        const isSelf =
+          target.userId === user.id ||
+          target.id === (user as any).employeeId ||
+          ((user as any).employeeId && (user as any).employeeId === id);
+
+        if (!isSelf) {
+          const mgr = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+          const sameDept = mgr.length > 0 && !!mgr[0].departmentId && !!target.departmentId && target.departmentId === mgr[0].departmentId;
+          const isOwnDept = mgr.length > 0 && mgr[0].id === id;
+          if (!sameDept && !isOwnDept) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
+          }
         }
       }
 
