@@ -1,7 +1,22 @@
+import crypto from 'crypto';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { hash, compare } from 'bcrypt';
-import { db, users, employees, departments, positions, workLocations, eq, or, desc } from '@payrollpro/db';
+import {
+  db,
+  users,
+  employees,
+  departments,
+  positions,
+  workLocations,
+  passwordResetTokens,
+  eq,
+  or,
+  desc,
+  and,
+  isNull,
+  gt,
+} from '@payrollpro/db';
 import { UserRole } from '@payrollpro/shared-types';
 import { requireRole } from '../middleware/auth.js';
 import {
@@ -15,6 +30,16 @@ import {
   clearLoginLockout,
 } from '../services/token-store.js';
 import { signRefreshToken, verifyRefreshToken } from '../services/refresh-jwt.js';
+import { sendResetPasswordEmail } from '../lib/mailer.js';
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token wajib diisi'),
+  newPassword: z.string().min(6, 'Password baru minimal 6 karakter').max(72),
+});
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -49,7 +74,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/login', {
     config: {
       rateLimit: {
-        max: 10,
+        max: process.env.NODE_ENV === 'test' ? 100 : 10,
         timeWindow: '1 minute',
       },
     },
@@ -316,6 +341,149 @@ export async function authRoutes(app: FastifyInstance) {
       });
     } catch (error) {
       return reply.status(401).send({ success: false, error: 'Invalid refresh token' });
+    }
+  });
+
+  // Forgot Password — sends reset email via Gmail (Nodemailer) with secure SHA-256 token
+  app.post('/forgot-password', {
+    config: {
+      rateLimit: {
+        max: process.env.NODE_ENV === 'test' ? 100 : 3,
+        timeWindow: '15 minutes',
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = forgotPasswordSchema.parse(request.body);
+      const email = body.email.toLowerCase().trim();
+
+      // IMPORTANT: The response is identical whether email exists or not to prevent account enumeration
+      const genericResponse = {
+        success: true,
+        message: 'Jika email terdaftar, link reset password sudah dikirim ke inbox Anda.',
+      };
+
+      const userResult = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      if (userResult.length === 0) {
+        return reply.send(genericResponse);
+      }
+
+      const user = userResult[0];
+      if (!user.isActive) {
+        return reply.send(genericResponse);
+      }
+
+      // Generate random 32-byte token and hash it with SHA-256
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+      // Invalidate any existing unused reset tokens for this user
+      await db.update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
+
+      // Insert new token valid for 30 minutes
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+      await db.insert(passwordResetTokens).values({
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      });
+
+      // Get user full name (from employees table if linked, fallback to email prefix)
+      let employeeName = user.email.split('@')[0];
+      const empResult = await db.select({ fullName: employees.fullName })
+        .from(employees)
+        .where(eq(employees.userId, user.id))
+        .limit(1);
+      if (empResult.length > 0 && empResult[0].fullName) {
+        employeeName = empResult[0].fullName;
+      }
+
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
+
+      await sendResetPasswordEmail(user.email, resetLink, employeeName);
+
+      return reply.send(genericResponse);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ success: false, error: 'Format email tidak valid', details: error.errors });
+      }
+      console.error('FORGOT-PASSWORD ERROR:', error);
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // Reset Password — validates token, hashes new password with bcrypt, invalidates token and old sessions
+  app.post('/reset-password', {
+    config: {
+      rateLimit: {
+        max: process.env.NODE_ENV === 'test' ? 100 : 5,
+        timeWindow: '15 minutes',
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = resetPasswordSchema.parse(request.body);
+      const tokenHash = crypto.createHash('sha256').update(body.token).digest('hex');
+
+      const records = await db.select().from(passwordResetTokens)
+        .where(and(
+          eq(passwordResetTokens.tokenHash, tokenHash),
+          isNull(passwordResetTokens.usedAt),
+          gt(passwordResetTokens.expiresAt, new Date())
+        ))
+        .limit(1);
+
+      if (records.length === 0) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Token tidak valid atau sudah kedaluwarsa.',
+          message: 'Token tidak valid atau sudah kedaluwarsa.',
+        });
+      }
+
+      const resetRecord = records[0];
+
+      // Hash new password using bcrypt (12 rounds)
+      const passwordHash = await hash(body.newPassword, 12);
+
+      // Update user password in database
+      await db.update(users)
+        .set({ passwordHash, updatedAt: new Date() })
+        .where(eq(users.id, resetRecord.userId));
+
+      // Mark token as used so it cannot be reused
+      await db.update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(eq(passwordResetTokens.id, resetRecord.id));
+
+      // Revoke all refresh tokens for this user across all devices
+      await revokeAllUserTokens(resetRecord.userId);
+
+      // Clear any login lockout for this account
+      const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, resetRecord.userId)).limit(1);
+      if (user?.email) {
+        await clearLoginLockout(user.email);
+      }
+
+      return reply.send({
+        success: true,
+        message: 'Password berhasil direset. Silakan login dengan password baru.',
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: error.errors[0]?.message || 'Validation error',
+          details: error.errors,
+        });
+      }
+      console.error('RESET-PASSWORD ERROR:', error);
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
     }
   });
 

@@ -90,6 +90,17 @@ export default function EmployeeListPage() {
   }, [user, router, fetchDepartments]);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get('search');
+      if (q) {
+        setSearchInput(q);
+        setSearch(q);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     void (async () => {
       await fetchEmployees();
     })();

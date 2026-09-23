@@ -18,7 +18,7 @@ async function seed() {
     passwordHash,
     role: 'super_admin',
     isActive: true,
-  });
+  }).onConflictDoNothing();
 
   // Seed Departments
   await db.insert(departments).values([
@@ -34,7 +34,7 @@ async function seed() {
       name: 'Finance',
       description: 'Finance Department',
     },
-  ]);
+  ]).onConflictDoNothing();
 
   // Seed Positions
   await db.insert(positions).values([
@@ -56,7 +56,7 @@ async function seed() {
       baseSalary: '6000000',
       grade: 'A1',
     },
-  ]);
+  ]).onConflictDoNothing();
 
   // Seed Work Locations
   await db.insert(workLocations).values([
@@ -74,7 +74,7 @@ async function seed() {
       longitude: '111.8738753',
       radiusMeters: 100,
     },
-  ]);
+  ]).onConflictDoNothing();
 
   // Seed Default Employee Profile for Super Admin
   const [adminUser] = await db.select().from(users).where(eq(users.email, 'admin@payrollpro.com')).limit(1);
@@ -106,7 +106,7 @@ async function seed() {
     { name: 'Pagi', startTime: '08:00', endTime: '16:00' },
     { name: 'Siang', startTime: '12:00', endTime: '20:00' },
     { name: 'Malam', startTime: '20:00', endTime: '04:00' },
-  ]);
+  ]).onConflictDoNothing();
 
   // Seed BPJS Config
   await db.insert(bpjsConfig).values([
@@ -115,7 +115,7 @@ async function seed() {
     { component: 'JP', employeeRate: '2', employerRate: '3.70', maxSalaryCap: '12000000', effectiveDate: '2024-01-01' },
     { component: 'JHT', employeeRate: '2', employerRate: '3.70', effectiveDate: '2024-01-01' },
     { component: 'BPJS_KES', employeeRate: '1', employerRate: '4', effectiveDate: '2024-01-01' },
-  ]);
+  ]).onConflictDoNothing();
 
   // Seed Tax Config (PPh 21 2024)
   await db.insert(taxConfig).values([
@@ -124,14 +124,14 @@ async function seed() {
     { bracketFrom: '250000000', bracketTo: '500000000', rate: '25', fixedAmount: '31500000', effectiveDate: '2024-01-01' },
     { bracketFrom: '500000000', bracketTo: '5000000000', rate: '30', fixedAmount: '106500000', effectiveDate: '2024-01-01' },
     { bracketFrom: '5000000000', bracketTo: null, rate: '35', fixedAmount: '1606500000', effectiveDate: '2024-01-01' },
-  ]);
+  ]).onConflictDoNothing();
 
   // Seed Overtime Rates
   await db.insert(overtimeRates).values([
     { name: 'Weekday', multiplier: '1.5', dayType: 'weekday' },
     { name: 'Weekend', multiplier: '2.0', dayType: 'weekend' },
     { name: 'Holiday', multiplier: '3.0', dayType: 'holiday' },
-  ]);
+  ]).onConflictDoNothing();
 
   console.log('Seed completed!');
   await client.end();

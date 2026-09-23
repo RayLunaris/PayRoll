@@ -47,7 +47,7 @@ interface LeaveTypeConfig {
   defaultQuota: number;
 }
 
-export const LEAVE_TYPES: LeaveTypeConfig[] = [
+const LEAVE_TYPES: LeaveTypeConfig[] = [
   { value: 'annual', label: 'Cuti Tahunan', defaultQuota: 12 },
   { value: 'sick', label: 'Cuti Sakit', defaultQuota: 12 },
   { value: 'maternity', label: 'Cuti Melahirkan', defaultQuota: 90 },

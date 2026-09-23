@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Bell,
-  Search,
   UserCircle,
   LogOut,
   MessageCircle,
@@ -13,6 +12,7 @@ import {
 import type { UserRole } from '@/types'
 import { useAuthStore } from '@/stores/auth'
 import { useState, useRef, useEffect } from 'react'
+import GlobalSearch from '@/components/layout/GlobalSearch'
 
 const roleLabels: Record<UserRole, string> = {
   super_admin: 'Super Admin',
@@ -46,17 +46,8 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-gray-200 bg-white">
       <div className="flex items-center justify-between px-6 py-3">
-        {/* Search */}
-        <div className="max-w-md flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Cari..."
-              className="input pl-10"
-            />
-          </div>
-        </div>
+        {/* Global Search */}
+        <GlobalSearch />
 
         {/* Right side items */}
         <div className="flex items-center gap-4">

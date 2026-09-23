@@ -1,5 +1,7 @@
+import crypto from 'crypto';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { db, users, passwordResetTokens, eq } from '@payrollpro/db';
 import { buildApp } from '../index.js';
 
 process.env.JWT_SECRET ||= 'test-only-secret-not-used-in-production';
@@ -191,5 +193,112 @@ describe('Auth API', () => {
       payload: { currentPassword: 'bukanpassword', newPassword: 'selalu12345' },
     });
     expect(change.statusCode).toBe(401);
+  });
+
+  it('should return generic response on forgot-password for non-existent and existing email', async () => {
+    // Non-existent email
+    const nonExistent = await app.inject({
+      method: 'POST',
+      url: '/api/auth/forgot-password',
+      payload: { email: 'nobody_here@payrollpro.com' },
+    });
+    expect(nonExistent.statusCode).toBe(200);
+    expect(nonExistent.json().message).toContain('Jika email terdaftar');
+
+    // Existing email
+    const existing = await app.inject({
+      method: 'POST',
+      url: '/api/auth/forgot-password',
+      payload: { email: testUser.email },
+    });
+    expect(existing.statusCode).toBe(200);
+    expect(existing.json().message).toContain('Jika email terdaftar');
+  });
+
+  it('should reject invalid email on forgot-password', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/forgot-password',
+      payload: { email: 'not-an-email' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('should reject reset-password with invalid or non-existent token', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/reset-password',
+      payload: { token: 'invalid_token_123', newPassword: 'brandNewPassword123' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('Token tidak valid');
+  });
+
+  it('should successfully reset password with valid token and allow login with new password', async () => {
+    // Create a known user and token directly in db to test reset
+    const resetUserEmail = `reset_user_${Date.now()}@payrollpro.com`;
+    const regRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        email: resetUserEmail,
+        password: 'initialPassword123',
+        fullName: 'Reset Tester',
+      },
+    });
+    expect(regRes.statusCode).toBe(201);
+    const userId = regRes.json().data.id;
+    cleanupUserIds.push(userId);
+
+    // Generate valid raw token & insert hash
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await db.insert(passwordResetTokens).values({
+      userId,
+      tokenHash,
+      expiresAt,
+    });
+
+    // Reset password with the valid raw token
+    const resetRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/reset-password',
+      payload: {
+        token: rawToken,
+        newPassword: 'resetNewPassword456',
+      },
+    });
+    expect(resetRes.statusCode).toBe(200);
+    expect(resetRes.json().message).toContain('berhasil direset');
+
+    // Token should now be marked as used and cannot be reused
+    const reuseRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/reset-password',
+      payload: {
+        token: rawToken,
+        newPassword: 'anotherPassword789',
+      },
+    });
+    expect(reuseRes.statusCode).toBe(400);
+
+    // Login with old password should fail
+    const oldLogin = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: resetUserEmail, password: 'initialPassword123' },
+    });
+    expect(oldLogin.statusCode).toBe(401);
+
+    // Login with new password should succeed
+    const newLogin = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: resetUserEmail, password: 'resetNewPassword456' },
+    });
+    expect(newLogin.statusCode).toBe(200);
+    expect(newLogin.json().data?.accessToken).toBeDefined();
   });
 });
