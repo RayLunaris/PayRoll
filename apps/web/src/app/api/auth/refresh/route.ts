@@ -60,7 +60,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Auth service unavailable' }, { status: 502 })
   }
 
-  const payload = await upstream.json()
+  let payload: unknown
+  try {
+    payload = await upstream.json()
+  } catch {
+    return NextResponse.json({ success: false, error: 'Invalid upstream response' }, { status: 502 })
+  }
   if (!upstream.ok) {
     const res = NextResponse.json(payload, { status: upstream.status })
     if (upstream.status === 401 || upstream.status === 403) {
@@ -69,8 +74,9 @@ export async function POST(request: NextRequest) {
     return res
   }
 
-  const accessToken: string | undefined = payload?.data?.accessToken
-  const newRefreshToken: string | undefined = payload?.data?.refreshToken
+  const body = payload as { data?: { accessToken?: string; refreshToken?: string } }
+  const accessToken: string | undefined = body?.data?.accessToken
+  const newRefreshToken: string | undefined = body?.data?.refreshToken
   if (!accessToken || !newRefreshToken) {
     return NextResponse.json({ success: false, error: 'Invalid refresh response' }, { status: 502 })
   }

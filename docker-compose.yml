@@ -202,7 +202,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - CORS_ORIGIN=http://localhost:3000
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
       - AUTH_SERVICE_URL=http://auth-service:3010
       - EMPLOYEE_SERVICE_URL=http://employee-service:3011

@@ -18,9 +18,28 @@ export async function buildApp() {
     logger: process.env.NODE_ENV !== 'test',
   });
 
-  // 1. CORS Configuration
+  // 1. CORS Configuration — comma-separated origins (e.g. Vercel prod + *.vercel.app previews)
+  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const originPatterns = allowedOrigins.map((origin) => {
+    if (!origin.includes('*')) return { exact: origin };
+    const pattern = '^' + origin.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
+    return { regex: new RegExp(pattern) };
+  });
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // Non-browser clients (curl, server-to-server) send no Origin header.
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      const allowed = originPatterns.some((rule) =>
+        'exact' in rule ? rule.exact === origin : rule.regex.test(origin),
+      );
+      callback(null, allowed);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
   });

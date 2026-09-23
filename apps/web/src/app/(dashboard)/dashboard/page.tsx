@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import StatCard from '@/components/dashboard/StatCard';
-import AttendanceChart from '@/components/dashboard/AttendanceChart';
-import PayrollChart from '@/components/dashboard/PayrollChart';
 import RecentActivity from '@/components/dashboard/RecentActivity';
 import QuickActions from '@/components/dashboard/QuickActions';
 import RecentAnnouncements from '@/components/dashboard/RecentAnnouncements';
@@ -22,6 +21,24 @@ import {
   Clock,
   AlertCircle,
 } from 'lucide-react';
+
+// Recharts (~400KB) is only needed when charts mount — keep it out of the dashboard first-load chunk.
+function ChartSkeleton() {
+  return (
+    <div className="h-64 w-full flex items-center justify-center bg-gray-50/50 rounded-lg">
+      <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+    </div>
+  );
+}
+
+const AttendanceChart = dynamic(
+  () => import('@/components/dashboard/AttendanceChart'),
+  { ssr: false, loading: ChartSkeleton },
+);
+const PayrollChart = dynamic(
+  () => import('@/components/dashboard/PayrollChart'),
+  { ssr: false, loading: ChartSkeleton },
+);
 
 interface ManagementStats {
   totalEmployees: number;
