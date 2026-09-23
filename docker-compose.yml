@@ -45,6 +45,7 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set — generate one with: openssl rand -hex 32}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set — generate one with: openssl rand -hex 32}
       - REDIS_URL=redis://redis:6379
     depends_on:
       postgres:

@@ -56,14 +56,25 @@ function sendToSocket(socket: AuthedSocket, payload: unknown) {
   }
 }
 
+function sendToUsers(userIds: string[], payload: unknown) {
+  for (const userId of userIds) {
+    const userSockets = connections.get(userId);
+    if (!userSockets) continue;
+    for (const socket of userSockets) sendToSocket(socket, payload);
+  }
+}
+
 function broadcastEvent(event: any) {
   const payload = { event: event.event || 'event', type: event.type || 'notification', data: event.data ?? null, timestamp: Date.now() };
 
+  // Multi-recipient private notifications (notifyUsers publishes toUserIds[])
+  if (Array.isArray(event.toUserIds)) {
+    sendToUsers(event.toUserIds.filter(Boolean), payload);
+    return;
+  }
+
   if (event.toUserId) {
-    const userSockets = connections.get(event.toUserId);
-    if (userSockets) {
-      for (const socket of userSockets) sendToSocket(socket, payload);
-    }
+    sendToUsers([event.toUserId], payload);
     return;
   }
 
@@ -75,10 +86,16 @@ function broadcastEvent(event: any) {
     return;
   }
 
-  // Broadcast to all connected clients
-  for (const sockets of connections.values()) {
-    for (const socket of sockets) sendToSocket(socket, payload);
+  // Explicit global broadcast only (e.g. announcements). Never fall through to
+  // "send to everyone" for untargeted events — that leaks private payloads.
+  if (event.broadcastAll === true) {
+    for (const sockets of connections.values()) {
+      for (const socket of sockets) sendToSocket(socket, payload);
+    }
+    return;
   }
+
+  console.warn(`[websocket] Dropping event "${payload.event}" with no target (toUserIds/toUserId/targetRole/broadcastAll)`);
 }
 
 async function issueTicket(

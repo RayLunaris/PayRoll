@@ -5,12 +5,18 @@ import rateLimit from '@fastify/rate-limit';
 import './types/index.js';
 import { authRoutes } from './routes/auth.js';
 import { registerAuthMiddleware } from './middleware/auth.js';
+import { setRefreshJwtSecret } from './services/refresh-jwt.js';
 
 export async function buildApp() {
   const JWT_SECRET = process.env.JWT_SECRET;
   if (!JWT_SECRET) {
     throw new Error('Missing required environment variable: JWT_SECRET');
   }
+  const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+  if (!JWT_REFRESH_SECRET) {
+    throw new Error('Missing required environment variable: JWT_REFRESH_SECRET');
+  }
+  setRefreshJwtSecret(JWT_REFRESH_SECRET);
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   });

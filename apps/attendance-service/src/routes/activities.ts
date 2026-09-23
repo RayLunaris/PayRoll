@@ -10,12 +10,13 @@ export async function attendanceActivityRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const user = request.user;
-      const role = (request.headers['x-user-role'] as string) || user?.role;
-      let employeeId = (request.headers['x-employee-id'] as string) || (user as any)?.employeeId;
-      let departmentId = (request.headers['x-department-id'] as string) || (user as any)?.departmentId;
+      // Identity comes only from the verified JWT (and DB profile) — never from
+      // client-controlled x-user-* / x-employee-* / x-department-* headers.
+      const role = user?.role;
+      let employeeId = (user as any)?.employeeId as string | undefined;
+      let departmentId = (user as any)?.departmentId as string | undefined;
 
-      // Fallback: resolve employee profile if header is empty and user is not admin
-      if (!employeeId && user?.id) {
+      if (user?.id) {
         const emp = await db.select({ id: employees.id, departmentId: employees.departmentId })
           .from(employees)
           .where(eq(employees.userId, user.id))

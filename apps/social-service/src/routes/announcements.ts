@@ -214,6 +214,7 @@ export async function announcementRoutes(app: FastifyInstance) {
       await publishEvent({
         event: 'new_announcement',
         type: 'announcement',
+        broadcastAll: true,
         data: {
           id: updated.id,
           title: updated.title,

@@ -14,6 +14,7 @@ import {
   recordFailedLogin,
   clearLoginLockout,
 } from '../services/token-store.js';
+import { signRefreshToken, verifyRefreshToken } from '../services/refresh-jwt.js';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -118,10 +119,12 @@ export async function authRoutes(app: FastifyInstance) {
       const jti = generateJti();
       await storeRefreshToken(user.id, jti, 7 * 24 * 3600);
 
-      const refreshToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role as UserRole, type: 'refresh', jti },
-        { expiresIn: '7d' }
-      );
+      const refreshToken = signRefreshToken({
+        id: user.id,
+        email: user.email,
+        role: user.role as UserRole,
+        jti,
+      });
 
       // Update last login
       await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, user.id));
@@ -242,17 +245,12 @@ export async function authRoutes(app: FastifyInstance) {
         return reply.status(400).send({ success: false, error: 'Refresh token required' });
       }
 
-      // Verify refresh token structure
-      const decoded = app.jwt.verify(refreshToken) as {
-        id: string;
-        email: string;
-        role: UserRole;
-        type?: string;
-        jti?: string;
-      };
-      
-      if (decoded.type !== 'refresh' || !decoded.jti) {
-        return reply.status(401).send({ success: false, error: 'Invalid token type' });
+      // Verify refresh token structure (signed with JWT_REFRESH_SECRET, not access secret)
+      let decoded: ReturnType<typeof verifyRefreshToken>;
+      try {
+        decoded = verifyRefreshToken(refreshToken);
+      } catch {
+        return reply.status(401).send({ success: false, error: 'Invalid refresh token' });
       }
 
       // Verify if token is still valid in store
@@ -305,10 +303,12 @@ export async function authRoutes(app: FastifyInstance) {
       const newJti = generateJti();
       await storeRefreshToken(user.id, newJti, 7 * 24 * 3600);
 
-      const newRefreshToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role as UserRole, type: 'refresh', jti: newJti },
-        { expiresIn: '7d' }
-      );
+      const newRefreshToken = signRefreshToken({
+        id: user.id,
+        email: user.email,
+        role: user.role as UserRole,
+        jti: newJti,
+      });
 
       return reply.send({
         success: true,
