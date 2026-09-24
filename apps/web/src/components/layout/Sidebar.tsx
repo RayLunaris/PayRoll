@@ -21,6 +21,7 @@ import {
   PanelLeftOpen,
   Building2,
   Check,
+  PieChart,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
@@ -132,6 +133,17 @@ const navGroups: NavGroupData[] = [
         icon: Users,
         href: '/employees',
         roles: ['hr_admin', 'super_admin'],
+      },
+      {
+        id: 'budgets',
+        title: 'Anggaran & Proyek',
+        icon: PieChart,
+        href: '/admin/budgets',
+        roles: ['hr_admin', 'super_admin', 'manager'],
+        children: [
+          { id: 'budgets-summary', title: 'Ringkasan Anggaran', href: '/admin/budgets', roles: ['hr_admin', 'super_admin'] },
+          { id: 'budgets-projects', title: 'Proyek & Alokasi Biaya', href: '/admin/projects', roles: ['hr_admin', 'manager', 'super_admin'] },
+        ],
       },
     ],
   },

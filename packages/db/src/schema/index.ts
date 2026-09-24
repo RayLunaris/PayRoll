@@ -18,3 +18,8 @@ export * from './tax-config';
 export * from './overtime-rates';
 export * from './overtime-requests';
 export * from './password-reset-tokens';
+export * from './position_salary_audit_logs';
+export * from './budgets';
+export * from './projects';
+export * from './project_members';
+export * from './project_expenses';

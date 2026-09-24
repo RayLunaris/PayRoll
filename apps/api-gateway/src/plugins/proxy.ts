@@ -20,6 +20,8 @@ export const SERVICES: ServiceConfig[] = [
   { name: 'uploads', prefix: '/api/uploads', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: true },
   { name: 'social-static', prefix: '/uploads', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: false },
   { name: 'shifts', prefix: '/api/shifts', url: process.env.SHIFT_SERVICE_URL || 'http://localhost:3016', auth: true },
+  { name: 'budgets', prefix: '/api/budgets', url: process.env.PAYROLL_SERVICE_URL || 'http://localhost:3012', auth: true },
+  { name: 'projects', prefix: '/api/projects', url: process.env.PAYROLL_SERVICE_URL || 'http://localhost:3012', auth: true },
 ];
 
 export async function registerProxy(app: FastifyInstance) {

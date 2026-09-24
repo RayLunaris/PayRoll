@@ -8,6 +8,8 @@ import { cashAdvanceRoutes } from './routes/cash-advances.js';
 import { bpjsConfigRoutes } from './routes/bpjs-config.js';
 import { taxConfigRoutes } from './routes/tax-config.js';
 import { overtimeRateRoutes } from './routes/overtime-rates.js';
+import { budgetRoutes } from './routes/budgets.js';
+import { projectRoutes } from './routes/projects.js';
 
 export async function buildApp() {
   const JWT_SECRET = process.env.JWT_SECRET;
@@ -52,6 +54,8 @@ export async function buildApp() {
   await app.register(bpjsConfigRoutes, { prefix: '/api/bpjs-config' });
   await app.register(taxConfigRoutes, { prefix: '/api/tax-config' });
   await app.register(overtimeRateRoutes, { prefix: '/api/overtime-rates' });
+  await app.register(budgetRoutes, { prefix: '/api/budgets' });
+  await app.register(projectRoutes, { prefix: '/api/projects' });
 
   // Health check
   app.get('/health', async () => {

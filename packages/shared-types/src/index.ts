@@ -48,9 +48,14 @@ export interface Department {
 export interface Position {
   id: string;
   name: string;
+  code?: string;
   description?: string;
   baseSalary: number;
   grade?: string;
+  levelRank?: number;
+  minSalary?: number;
+  maxSalary?: number;
+  positionAllowance?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -265,6 +270,79 @@ export function getWIBTimeString(date: Date = new Date()): string {
 export function timeToMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(':').map(Number);
   return h * 60 + m;
+}
+
+// Position Salary Audit Log Types
+export interface PositionSalaryAuditLog {
+  id: string;
+  positionId: string;
+  changedByUserId: string;
+  oldBaseSalary: number;
+  newBaseSalary: number;
+  oldAllowance?: number;
+  newAllowance?: number;
+  reason: string;
+  createdAt: Date;
+}
+
+// Budget Types
+export interface Budget {
+  id: string;
+  name: string;
+  periodYear: number;
+  periodMonth?: number | null;
+  category: 'payroll' | 'project' | 'department' | 'general';
+  departmentId?: string | null;
+  allocatedAmount: number;
+  spentAmount: number;
+  notes?: string | null;
+  status: 'draft' | 'active' | 'closed' | 'exceeded';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Project Types
+export interface Project {
+  id: string;
+  code: string;
+  name: string;
+  clientName?: string | null;
+  managerUserId?: string | null;
+  totalBudget: number;
+  laborBudget: number;
+  operationalBudget: number;
+  spentLabor: number;
+  spentOperational: number;
+  startDate: string | Date;
+  endDate?: string | Date | null;
+  status: 'planning' | 'active' | 'completed' | 'on_hold';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ProjectMember {
+  id: string;
+  projectId: string;
+  employeeId: string;
+  roleInProject: string;
+  allocationPercentage: number;
+  assignedMonthlyCost: number;
+  startDate: string | Date;
+  endDate?: string | Date | null;
+  createdAt: Date;
+}
+
+export interface ProjectExpense {
+  id: string;
+  projectId: string;
+  expenseTitle: string;
+  category: 'cloud_server' | 'license' | 'travel' | 'equipment' | 'other';
+  amount: number;
+  expenseDate: string | Date;
+  receiptUrl?: string | null;
+  submittedByUserId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Date;
 }
 
 export * from './activity.js';

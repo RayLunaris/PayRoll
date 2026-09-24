@@ -1,4 +1,18 @@
-import { db, employees, positions, payrolls, cashAdvances, eq, and, or, inArray } from '@payrollpro/db';
+import {
+  db,
+  employees,
+  positions,
+  payrolls,
+  cashAdvances,
+  projectMembers,
+  projects,
+  budgets,
+  eq,
+  and,
+  or,
+  inArray,
+  sql,
+} from '@payrollpro/db';
 import { calculateBPJS } from './bpjs.js';
 import { calculatePPh21 } from './tax.js';
 import { calculateOvertimePay } from './overtime.js';
@@ -37,10 +51,16 @@ export async function processEmployeePayroll(
 
   // Base salary resolution (from employee or position fallback)
   let baseSalary = parseFloat(emp.baseSalary || '0');
-  if (baseSalary <= 0 && emp.positionId) {
+  let positionAllowance = 0;
+  if (emp.positionId) {
     const position = await db.select().from(positions).where(eq(positions.id, emp.positionId)).limit(1);
-    if (position.length > 0 && position[0].baseSalary) {
-      baseSalary = parseFloat(position[0].baseSalary);
+    if (position.length > 0) {
+      if (baseSalary <= 0 && position[0].baseSalary) {
+        baseSalary = parseFloat(position[0].baseSalary);
+      }
+      if (position[0].positionAllowance) {
+        positionAllowance = parseFloat(position[0].positionAllowance);
+      }
     }
   }
 
@@ -58,8 +78,8 @@ export async function processEmployeePayroll(
   // Overtime pay with tiered calculation
   const overtime = await calculateOvertimePay(employeeId, startDate, endDate, baseSalary);
 
-  // Allowances (5% fixed transport/meal allowance)
-  const allowances = Math.round(baseSalary * 0.05);
+  // Allowances (5% fixed transport/meal allowance + position allowance)
+  const allowances = Math.round(baseSalary * 0.05) + positionAllowance;
 
   const grossSalary = baseSalary + overtime.overtimePay + allowances;
 
@@ -154,6 +174,48 @@ export async function processEmployeePayroll(
         status: 'processed',
       }).returning();
       payrollId = created[0].id;
+
+      // Allocate labor cost to projects if employee is assigned
+      const activeMemberships = await tx
+        .select()
+        .from(projectMembers)
+        .where(eq(projectMembers.employeeId, employeeId));
+
+      for (const m of activeMemberships) {
+        const cost = parseFloat(m.assignedMonthlyCost || '0');
+        if (cost > 0) {
+          const [proj] = await tx.select().from(projects).where(eq(projects.id, m.projectId)).limit(1);
+          if (proj) {
+            const currentLabor = parseFloat(proj.spentLabor || '0');
+            await tx
+              .update(projects)
+              .set({ spentLabor: (currentLabor + cost).toFixed(2), updatedAt: new Date() })
+              .where(eq(projects.id, proj.id));
+          }
+        }
+      }
+
+      // Update payroll budget spent amount if an active payroll budget exists
+      const activeBudget = await tx
+        .select()
+        .from(budgets)
+        .where(
+          and(
+            eq(budgets.periodYear, year),
+            eq(budgets.category, 'payroll'),
+            eq(budgets.status, 'active'),
+            sql`(${budgets.periodMonth} is null or ${budgets.periodMonth} = ${month})`
+          )
+        )
+        .limit(1);
+
+      if (activeBudget.length > 0) {
+        const curSpent = parseFloat(activeBudget[0].spentAmount || '0');
+        await tx
+          .update(budgets)
+          .set({ spentAmount: (curSpent + netSalary).toFixed(2), updatedAt: new Date() })
+          .where(eq(budgets.id, activeBudget[0].id));
+      }
     }
 
     // Mark approved cash advances as deducted

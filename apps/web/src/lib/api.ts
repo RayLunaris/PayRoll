@@ -86,6 +86,13 @@ api.interceptors.response.use(
       }
     }
 
+    if (typeof window !== 'undefined' && error?.response) {
+      console.error(
+        `[API Error ${error.response.status}] ${error.config?.method?.toUpperCase()} ${error.config?.url}:`,
+        error.response.data
+      )
+    }
+
     return Promise.reject(error)
   },
 )

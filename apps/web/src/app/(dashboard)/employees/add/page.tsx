@@ -7,7 +7,8 @@ import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import api from '@/lib/api';
-import { Save, X } from 'lucide-react';
+import { Save, X, AlertCircle, Info } from 'lucide-react';
+import { formatRupiah } from '@/lib/csv';
 
 const employeeSchema = z.object({
   nip: z.string().min(1, 'NIP wajib diisi'),
@@ -35,7 +36,12 @@ interface Department {
 interface Position {
   id: string;
   name: string;
+  code?: string | null;
+  grade?: string | null;
   baseSalary: number;
+  minSalary?: number | null;
+  maxSalary?: number | null;
+  positionAllowance?: number | null;
 }
 
 interface Location {
@@ -63,6 +69,14 @@ export default function AddEmployeePage() {
   });
 
   const selectedPosition = useWatch({ control, name: 'positionId' });
+  const currentSalary = useWatch({ control, name: 'baseSalary' });
+  const activePosition = positions.find((p) => p.id === selectedPosition);
+
+  const isOutOfRange =
+    activePosition &&
+    currentSalary &&
+    ((activePosition.minSalary && currentSalary < Number(activePosition.minSalary)) ||
+      (activePosition.maxSalary && currentSalary > Number(activePosition.maxSalary)));
 
   useEffect(() => {
     void (async () => {
@@ -81,13 +95,12 @@ export default function AddEmployeePage() {
     })();
   }, []);
 
-  // Auto-suggest salary from selected position (only when field is still empty)
+  // Auto-populate salary from selected position
   useEffect(() => {
-    const position = positions.find((p) => p.id === selectedPosition);
-    if (position && !getValues('baseSalary')) {
-      setValue('baseSalary', position.baseSalary);
+    if (activePosition && activePosition.baseSalary) {
+      setValue('baseSalary', Number(activePosition.baseSalary));
     }
-  }, [selectedPosition, positions, setValue, getValues]);
+  }, [selectedPosition, activePosition, setValue]);
 
   const onSubmit = async (data: EmployeeForm) => {
     setLoading(true);
@@ -269,7 +282,7 @@ export default function AddEmployeePage() {
                   <option value="">Pilih jabatan</option>
                   {positions.map((pos) => (
                     <option key={pos.id} value={pos.id}>
-                      {pos.name} - Rp{' '}
+                      {pos.name} {pos.code ? `[${pos.code}]` : ''} - Rp{' '}
                       {Number(pos.baseSalary).toLocaleString('id-ID')}
                     </option>
                   ))}
@@ -278,6 +291,32 @@ export default function AddEmployeePage() {
                   <p className="mt-1 text-sm text-red-600">
                     {errors.positionId.message}
                   </p>
+                )}
+
+                {activePosition && (
+                  <div className="mt-2 text-xs space-y-1 bg-blue-50/70 border border-blue-100 p-2.5 rounded-lg text-blue-900">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Jenjang / Grade:</span>
+                      <span className="font-semibold">{activePosition.grade || 'Grade 1'}</span>
+                    </div>
+                    {(activePosition.minSalary || activePosition.maxSalary) && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Rentang Gaji Acuan:</span>
+                        <span className="font-mono font-medium">
+                          {activePosition.minSalary ? formatRupiah(Number(activePosition.minSalary)) : 'Rp 0'} -{' '}
+                          {activePosition.maxSalary ? formatRupiah(Number(activePosition.maxSalary)) : 'Tak Terbatas'}
+                        </span>
+                      </div>
+                    )}
+                    {Number(activePosition.positionAllowance || 0) > 0 && (
+                      <div className="flex justify-between text-indigo-700">
+                        <span>Tunjangan Jabatan Otomatis:</span>
+                        <span className="font-mono font-bold">
+                          {formatRupiah(Number(activePosition.positionAllowance))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -339,6 +378,15 @@ export default function AddEmployeePage() {
                   )}
                 </div>
               </div>
+
+              {isOutOfRange && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2 animate-in fade-in">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Peringatan Rentang Gaji (Salary Band):</span> Gaji yang dimasukkan ({formatRupiah(Number(currentSalary))}) berada di luar rentang standar jabatan ini ({activePosition.minSalary ? formatRupiah(Number(activePosition.minSalary)) : 'Rp 0'} - {activePosition.maxSalary ? formatRupiah(Number(activePosition.maxSalary)) : '∞'}).
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

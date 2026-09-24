@@ -38,6 +38,16 @@ interface ProcessResult {
   error?: string;
 }
 
+interface BudgetCheckData {
+  budgetYear: number;
+  allocatedAmount: number;
+  spentAmount: number;
+  remainingBudget: number;
+  estimatedPayroll: number;
+  isOverbudget: boolean;
+  overbudgetAmount: number;
+}
+
 export default function PayrollProcessPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -47,6 +57,10 @@ export default function PayrollProcessPage() {
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<ProcessResult | null>(null);
 
+  const [budgetCheck, setBudgetCheck] = useState<BudgetCheckData | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
+  const [confirmOverbudget, setConfirmOverbudget] = useState(false);
+
   // Role guard
   useEffect(() => {
     if (user && !ALLOWED_ROLES.includes(user.role as UserRole)) {
@@ -54,7 +68,37 @@ export default function PayrollProcessPage() {
     }
   }, [user, router]);
 
+  // Check budget on month/year change
+  useEffect(() => {
+    const fetchBudgetCheck = async () => {
+      setBudgetLoading(true);
+      setConfirmOverbudget(false);
+      try {
+        const res = await api.get<{ success: boolean; data: BudgetCheckData }>(
+          `/budgets/check-payroll?month=${month}&year=${year}`
+        );
+        if (res.data?.success) {
+          setBudgetCheck(res.data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch budget check:', err);
+      } finally {
+        setBudgetLoading(false);
+      }
+    };
+
+    fetchBudgetCheck();
+  }, [month, year]);
+
+  const formatCurrency = (val: number) =>
+    'Rp ' + Number(val || 0).toLocaleString('id-ID');
+
   const handleProcess = async () => {
+    if (budgetCheck?.isOverbudget && !confirmOverbudget) {
+      alert('Harap centang konfirmasi overbudget sebelum memproses payroll.');
+      return;
+    }
+
     setProcessing(true);
     setResult(null);
 
@@ -64,6 +108,13 @@ export default function PayrollProcessPage() {
         year,
       });
       setResult(response.data);
+      // Re-fetch budget check after processing to reflect new spent amount
+      const res = await api.get<{ success: boolean; data: BudgetCheckData }>(
+        `/budgets/check-payroll?month=${month}&year=${year}`
+      );
+      if (res.data?.success) {
+        setBudgetCheck(res.data.data);
+      }
     } catch (err: unknown) {
       const axiosErr = err as {
         response?: { data?: { error?: string } };
@@ -88,10 +139,43 @@ export default function PayrollProcessPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Proses Payroll</h1>
         <p className="text-gray-500 mt-1">
-          Proses perhitungan gaji otomatis termasuk lembur, BPJS, PPh 21, dan
-          kasbon
+          Proses perhitungan gaji otomatis termasuk tunjangan jabatan, lembur, BPJS, PPh 21, dan
+          sinkronisasi anggaran perusahaan
         </p>
       </div>
+
+      {/* Budget Guardrail Banner */}
+      {budgetCheck && budgetCheck.isOverbudget && (
+        <div className="mb-6 p-4 rounded-xl border border-red-200 bg-red-50 text-red-900">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-6 w-6 text-red-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <h4 className="font-bold text-base text-red-900">
+                Peringatan: Estimasi Payroll Melebihi Sisa Anggaran Perusahaan!
+              </h4>
+              <p className="text-sm text-red-700 mt-1">
+                Estimasi kebutuhan payroll periode ini adalah{' '}
+                <span className="font-semibold">{formatCurrency(budgetCheck.estimatedPayroll)}</span>, sedangkan sisa pagu anggaran tahun {budgetCheck.budgetYear} hanya{' '}
+                <span className="font-semibold">{formatCurrency(budgetCheck.remainingBudget)}</span>. Terjadi potensi defisit sebesar{' '}
+                <span className="font-bold underline">{formatCurrency(budgetCheck.overbudgetAmount)}</span>.
+              </p>
+
+              <div className="mt-4 pt-3 border-t border-red-200 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="confirmOverbudget"
+                  checked={confirmOverbudget}
+                  onChange={(e) => setConfirmOverbudget(e.target.checked)}
+                  className="rounded border-red-400 text-red-600 focus:ring-red-500 h-4 w-4"
+                />
+                <label htmlFor="confirmOverbudget" className="text-xs sm:text-sm font-medium text-red-950 cursor-pointer">
+                  Saya memahami risiko defisit anggaran dan telah mengantongi persetujuan Finance/Direksi untuk memproses periode ini.
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Processing form */}
@@ -139,10 +223,28 @@ export default function PayrollProcessPage() {
               </div>
             </div>
 
+            {/* Budget status preview */}
+            {budgetCheck && (
+              <div className="p-3 bg-gray-50 rounded-lg text-xs space-y-1.5 border border-gray-100">
+                <div className="flex justify-between text-gray-600">
+                  <span>Estimasi Beban Payroll:</span>
+                  <span className="font-semibold text-gray-900">
+                    {budgetLoading ? 'Menghitung...' : formatCurrency(budgetCheck.estimatedPayroll)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>Sisa Pagu Anggaran ({budgetCheck.budgetYear}):</span>
+                  <span className={`font-semibold ${budgetCheck.isOverbudget ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {budgetLoading ? 'Memeriksa...' : formatCurrency(budgetCheck.remainingBudget)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={handleProcess}
-              disabled={processing}
-              className="btn btn-primary w-full py-3 flex items-center justify-center gap-2"
+              disabled={processing || (budgetCheck?.isOverbudget && !confirmOverbudget)}
+              className="btn btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {processing ? (
                 <>
@@ -189,8 +291,8 @@ export default function PayrollProcessPage() {
           </h3>
           <div className="space-y-3 text-sm">
             <div className="flex justify-between py-2 border-b border-gray-100">
-              <span className="text-gray-600">Gaji pokok per jabatan</span>
-              <span className="font-medium">Otomatis</span>
+              <span className="text-gray-600">Gaji pokok & Tunjangan jabatan</span>
+              <span className="font-medium text-emerald-600">Standar Berjenjang</span>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100">
               <span className="text-gray-600">Lembur (custom rates)</span>
@@ -203,12 +305,20 @@ export default function PayrollProcessPage() {
               <span className="font-medium">Otomatis</span>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100">
-              <span className="text-gray-600">PPh 21 progresif</span>
+              <span className="text-gray-600">PPh 21 progresif (TER & Pasal 17)</span>
               <span className="font-medium">Otomatis</span>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100">
               <span className="text-gray-600">Kasbon (maks 25% gaji)</span>
               <span className="font-medium">Otomatis</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-gray-100">
+              <span className="text-gray-600">Alokasi Beban Proyek (FTE %)</span>
+              <span className="font-medium text-blue-600">Project Costing</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-gray-100">
+              <span className="text-gray-600">Sinkronisasi Realisasi Anggaran</span>
+              <span className="font-medium text-purple-600">Budget Burn Auto</span>
             </div>
             <div className="flex justify-between py-2">
               <span className="text-gray-600">Slip gaji PDF</span>

@@ -394,6 +394,11 @@ export async function leaveRoutes(app: FastifyInstance) {
     try {
       const user = request.user;
       const { id } = request.params as { id: string };
+
+      if (!z.string().uuid().safeParse(id).success) {
+        return reply.status(404).send({ success: false, error: 'Leave not found' });
+      }
+
       const leave = await db.select().from(leaves).where(eq(leaves.id, id)).limit(1);
 
       if (leave.length === 0) {

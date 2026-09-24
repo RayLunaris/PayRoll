@@ -120,6 +120,11 @@ export async function shiftRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
+
+      if (!z.string().uuid().safeParse(id).success) {
+        return reply.status(404).send({ success: false, error: 'Shift not found' });
+      }
+
       const shift = await db.select().from(shifts).where(eq(shifts.id, id)).limit(1);
 
       if (shift.length === 0) {
