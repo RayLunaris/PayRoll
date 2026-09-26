@@ -272,8 +272,6 @@ function NavItem({
     return roles.includes(userRole)
   }
 
-  if (!isVisible(item.roles)) return null
-
   const visibleChildren = item.children?.filter((c) => isVisible(c.roles)) || []
   const hasChildren = visibleChildren.length > 0
   const isItemActive =
@@ -286,6 +284,8 @@ function NavItem({
       setIsOpen(true)
     }
   }, [isItemActive])
+
+  if (!isVisible(item.roles)) return null
 
   if (collapsed) {
     return (

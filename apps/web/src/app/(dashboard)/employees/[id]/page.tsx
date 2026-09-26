@@ -5,6 +5,7 @@ import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuthStore } from '@/stores/auth';
 import {
   User,
   Building2,
@@ -53,6 +54,8 @@ function formatSalary(value: string | number): string {
 
 export default function EmployeeDetailPage() {
   const params = useParams<{ id: string }>();
+  const user = useAuthStore((state) => state.user);
+  const canManage = user?.role === 'super_admin' || user?.role === 'hr_admin';
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [departments, setDepartments] = useState<NamedEntity[]>([]);
   const [positions, setPositions] = useState<NamedEntity[]>([]);
@@ -127,10 +130,12 @@ export default function EmployeeDetailPage() {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Profil Karyawan</h1>
-        <button type="button" className="btn btn-primary">
-          <Pencil className="h-4 w-4" />
-          Edit
-        </button>
+        {canManage && (
+          <Link href={`/employees/${employee.id}/edit`} className="btn btn-primary">
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Link>
+        )}
       </div>
 
       {/* Profile header */}

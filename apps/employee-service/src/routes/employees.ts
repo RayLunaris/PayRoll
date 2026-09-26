@@ -6,6 +6,16 @@ import { requireRole } from '../middleware/auth.js';
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
+const optionalNullableString = z.preprocess(
+  (v) => (v === '' ? null : v),
+  z.string().nullable().optional()
+);
+
+const optionalDateString = z.preprocess(
+  (v) => (v === '' ? null : v),
+  z.string().regex(dateRegex, 'Format tanggal harus YYYY-MM-DD').nullable().optional()
+);
+
 const employeeSchema = z.object({
   userId: z.string().uuid().optional(),
   nip: z.string().min(1, 'NIP is required'),
@@ -13,15 +23,15 @@ const employeeSchema = z.object({
   departmentId: z.string().uuid('Valid departmentId is required'),
   positionId: z.string().uuid('Valid positionId is required'),
   locationId: z.string().uuid('Valid locationId is required'),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  birthDate: z.string().regex(dateRegex, 'birthDate must be in YYYY-MM-DD format').optional(),
+  phone: optionalNullableString,
+  address: optionalNullableString,
+  birthDate: optionalDateString,
   joinDate: z.string().regex(dateRegex, 'joinDate must be in YYYY-MM-DD format'),
   baseSalary: z.coerce.number().positive('baseSalary must be a positive number').transform(val => val.toFixed(2)),
-  npwp: z.string().optional(),
-  bankName: z.string().optional(),
-  bankAccount: z.string().optional(),
-  photoUrl: z.string().optional(),
+  npwp: optionalNullableString,
+  bankName: optionalNullableString,
+  bankAccount: optionalNullableString,
+  photoUrl: optionalNullableString,
   isActive: z.boolean().optional().default(true),
 });
 

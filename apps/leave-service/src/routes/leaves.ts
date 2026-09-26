@@ -28,6 +28,109 @@ const DEFAULT_QUOTAS: Record<string, number> = {
 };
 
 export async function leaveRoutes(app: FastifyInstance) {
+  // List leaves with pagination & filtering
+  app.get('/', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user;
+      const {
+        page = '1',
+        limit = '50',
+        employeeId,
+        status,
+        leaveType,
+        startDate,
+        endDate,
+      } = request.query as {
+        page?: string;
+        limit?: string;
+        employeeId?: string;
+        status?: string;
+        leaveType?: string;
+        startDate?: string;
+        endDate?: string;
+      };
+
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(500, Math.max(1, parseInt(limit, 10) || 50));
+      const offset = (pageNum - 1) * limitNum;
+
+      const conditions: any[] = [];
+
+      if (user.role === 'employee') {
+        const emp = await db.select().from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (emp.length === 0) {
+          return reply.send({ success: true, data: [], pagination: { page: pageNum, limit: limitNum, total: 0, totalPages: 1 } });
+        }
+        conditions.push(eq(leaves.employeeId, emp[0].id));
+      } else if (user.role === 'manager') {
+        const mgrEmp = await db.select({ departmentId: employees.departmentId }).from(employees).where(eq(employees.userId, user.id)).limit(1);
+        if (!mgrEmp.length || !mgrEmp[0].departmentId) {
+          return reply.send({ success: true, data: [], pagination: { page: pageNum, limit: limitNum, total: 0, totalPages: 1 } });
+        }
+        const deptEmployees = await db.select({ id: employees.id }).from(employees).where(eq(employees.departmentId, mgrEmp[0].departmentId));
+        const deptEmpIds = deptEmployees.map((e) => e.id);
+        if (deptEmpIds.length === 0) {
+          return reply.send({ success: true, data: [], pagination: { page: pageNum, limit: limitNum, total: 0, totalPages: 1 } });
+        }
+        if (employeeId) {
+          if (!deptEmpIds.includes(employeeId)) {
+            return reply.status(403).send({ success: false, error: 'Forbidden: Cannot access leaves outside your department' });
+          }
+          conditions.push(eq(leaves.employeeId, employeeId));
+        } else {
+          conditions.push(inArray(leaves.employeeId, deptEmpIds));
+        }
+      } else {
+        // super_admin / hr_admin
+        if (employeeId) {
+          conditions.push(eq(leaves.employeeId, employeeId));
+        }
+      }
+
+      if (status) {
+        conditions.push(eq(leaves.status, status as any));
+      }
+      if (leaveType) {
+        conditions.push(eq(leaves.leaveType, leaveType as any));
+      }
+      if (startDate) {
+        conditions.push(gte(leaves.startDate, startDate));
+      }
+      if (endDate) {
+        conditions.push(lte(leaves.endDate, endDate));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const [data, countResult] = await Promise.all([
+        db.select().from(leaves)
+          .where(whereClause)
+          .orderBy(desc(leaves.createdAt))
+          .limit(limitNum)
+          .offset(offset),
+        db.select({ count: sql<string>`count(*)` }).from(leaves).where(whereClause),
+      ]);
+
+      const total = parseInt(countResult[0]?.count || '0', 10);
+
+      return reply.send({
+        success: true,
+        data,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum) || 1,
+        },
+      });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
   // Request leave
   app.post('/', {
     preHandler: [app.authenticate],

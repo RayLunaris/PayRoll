@@ -44,29 +44,46 @@ export default function Breadcrumb() {
   const segments = pathname.split('/').filter(Boolean)
 
   return (
-    <nav className="mb-4 flex items-center gap-1 text-sm text-gray-500">
-      <Link href="/dashboard" className="flex items-center hover:text-blue-600">
-        <Home className="h-4 w-4" />
-      </Link>
+    <nav aria-label="Breadcrumb" className="mb-4">
+      <ol className="flex items-center gap-1 text-sm text-gray-500 flex-wrap">
+        <li className="flex items-center">
+          <Link
+            href="/dashboard"
+            aria-label="Dashboard"
+            className="flex items-center hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-0.5"
+          >
+            <Home className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Dashboard</span>
+          </Link>
+        </li>
 
-      {segments.map((segment, index) => {
-        const href = '/' + segments.slice(0, index + 1).join('/')
-        const label = routeLabels[segment] || segment
-        const isLast = index === segments.length - 1
+        {segments.map((segment, index) => {
+          const href = '/' + segments.slice(0, index + 1).join('/')
+          const label = routeLabels[segment] || segment
+          const isLast = index === segments.length - 1
 
-        return (
-          <span key={href} className="flex items-center gap-1">
-            <ChevronRight className="h-4 w-4" />
-            {isLast ? (
-              <span className="font-medium text-gray-900 capitalize">{label}</span>
-            ) : (
-              <Link href={href} className="capitalize hover:text-blue-600">
-                {label}
-              </Link>
-            )}
-          </span>
-        )
-      })}
+          return (
+            <li key={href} className="flex items-center gap-1">
+              <ChevronRight className="h-4 w-4 text-gray-400" aria-hidden="true" />
+              {isLast ? (
+                <span
+                  aria-current="page"
+                  className="font-medium text-gray-900 capitalize"
+                >
+                  {label}
+                </span>
+              ) : (
+                <Link
+                  href={href}
+                  className="capitalize hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-0.5"
+                >
+                  {label}
+                </Link>
+              )}
+            </li>
+          )
+        })}
+      </ol>
     </nav>
   )
 }

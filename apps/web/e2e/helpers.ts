@@ -31,6 +31,7 @@ export async function loginViaUi(page: Page, email = ADMIN_EMAIL, password = ADM
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').fill(password);
   await page.locator('button[type="submit"]').click();
+  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
 }
 
 export async function fetchRefs(request: APIRequestContext, token: string) {

@@ -1,17 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import api from '@/lib/api';
-import { Save, X, AlertCircle, Info } from 'lucide-react';
+import { Save, X, AlertCircle } from 'lucide-react';
 import { formatRupiah } from '@/lib/csv';
 import { useRequireRole } from '@/hooks/useAuth';
+import { toast } from '@/stores/toast';
 
-const employeeSchema = z.object({
+const employeeEditSchema = z.object({
   nip: z.string().min(1, 'NIP wajib diisi'),
   fullName: z.string().min(1, 'Nama lengkap wajib diisi'),
   departmentId: z.string().uuid('Pilih departemen'),
@@ -19,15 +20,16 @@ const employeeSchema = z.object({
   locationId: z.string().uuid('Pilih lokasi kerja'),
   joinDate: z.string().min(1, 'Tanggal bergabung wajib diisi'),
   baseSalary: z.number().positive('Gaji pokok wajib diisi'),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  birthDate: z.string().optional(),
-  npwp: z.string().optional(),
-  bankName: z.string().optional(),
-  bankAccount: z.string().optional(),
+  phone: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  birthDate: z.string().optional().nullable(),
+  npwp: z.string().optional().nullable(),
+  bankName: z.string().optional().nullable(),
+  bankAccount: z.string().optional().nullable(),
+  isActive: z.boolean().optional(),
 });
 
-type EmployeeForm = z.infer<typeof employeeSchema>;
+type EmployeeEditForm = z.infer<typeof employeeEditSchema>;
 
 interface Department {
   id: string;
@@ -50,24 +52,26 @@ interface Location {
   name: string;
 }
 
-export default function AddEmployeePage() {
+export default function EditEmployeePage() {
   const router = useRouter();
+  const params = useParams<{ id: string }>();
   const { isLoading: roleLoading } = useRequireRole('super_admin', 'hr_admin');
+
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const {
     register,
     handleSubmit,
     control,
-    setValue,
-    getValues,
+    reset,
     formState: { errors },
-  } = useForm<EmployeeForm>({
-    resolver: zodResolver(employeeSchema),
+  } = useForm<EmployeeEditForm>({
+    resolver: zodResolver(employeeEditSchema),
   });
 
   const selectedPosition = useWatch({ control, name: 'positionId' });
@@ -81,59 +85,90 @@ export default function AddEmployeePage() {
       (activePosition.maxSalary && currentSalary > Number(activePosition.maxSalary)));
 
   useEffect(() => {
+    if (!params?.id) return;
+
     void (async () => {
+      setFetching(true);
+      setError('');
       try {
-        const [deptRes, posRes, locRes] = await Promise.all([
+        const [empRes, deptRes, posRes, locRes] = await Promise.all([
+          api.get<{ data: any }>(`/employees/${params.id}`),
           api.get<{ data: Department[] }>('/departments'),
           api.get<{ data: Position[] }>('/positions'),
           api.get<{ data: Location[] }>('/locations'),
         ]);
+
+        const emp = empRes.data.data;
         setDepartments(deptRes.data.data || []);
         setPositions(posRes.data.data || []);
         setLocations(locRes.data.data || []);
-      } catch (err) {
-        console.error('Failed to fetch dropdowns:', err);
+
+        if (emp) {
+          reset({
+            nip: emp.nip || '',
+            fullName: emp.fullName || '',
+            departmentId: emp.departmentId || '',
+            positionId: emp.positionId || '',
+            locationId: emp.locationId || '',
+            joinDate: emp.joinDate ? emp.joinDate.split('T')[0] : '',
+            baseSalary: Number(emp.baseSalary || 0),
+            phone: emp.phone || '',
+            address: emp.address || '',
+            birthDate: emp.birthDate ? emp.birthDate.split('T')[0] : '',
+            npwp: emp.npwp || '',
+            bankName: emp.bankName || '',
+            bankAccount: emp.bankAccount || '',
+            isActive: emp.isActive !== false,
+          });
+        }
+      } catch (err: unknown) {
+        console.error('Failed to load employee edit data:', err);
+        const axiosErr = err as { response?: { data?: { error?: string } } };
+        setError(axiosErr.response?.data?.error || 'Gagal memuat data karyawan');
+      } finally {
+        setFetching(false);
       }
     })();
-  }, []);
+  }, [params?.id, reset]);
 
-  // Auto-populate salary from selected position
-  useEffect(() => {
-    if (activePosition && activePosition.baseSalary) {
-      setValue('baseSalary', Number(activePosition.baseSalary));
-    }
-  }, [selectedPosition, activePosition, setValue]);
-
-  const onSubmit = async (data: EmployeeForm) => {
-    setLoading(true);
+  const onSubmit = async (data: EmployeeEditForm) => {
+    setSubmitting(true);
     setError('');
 
     try {
-      await api.post('/employees', {
-        ...data,
-        phone: data.phone || undefined,
-        address: data.address || undefined,
-        birthDate: data.birthDate || undefined,
-        npwp: data.npwp || undefined,
-        bankName: data.bankName || undefined,
-        bankAccount: data.bankAccount || undefined,
+      await api.put(`/employees/${params.id}`, {
+        nip: data.nip.trim(),
+        fullName: data.fullName.trim(),
+        departmentId: data.departmentId,
+        positionId: data.positionId,
+        locationId: data.locationId,
+        joinDate: data.joinDate,
+        baseSalary: Number(data.baseSalary),
+        phone: data.phone?.trim() || null,
+        address: data.address?.trim() || null,
+        birthDate: data.birthDate?.trim() || null,
+        npwp: data.npwp?.trim() || null,
+        bankName: data.bankName?.trim() || null,
+        bankAccount: data.bankAccount?.trim() || null,
+        isActive: data.isActive,
       });
-      router.push('/employees');
+      toast.success('Data karyawan berhasil diperbarui');
+      router.push(`/employees/${params.id}`);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       setError(
         axiosErr.response?.data?.error ||
-          'Terjadi kesalahan saat menambah karyawan',
+          'Terjadi kesalahan saat memperbarui data karyawan',
       );
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   const inputClasses = (hasError: boolean) =>
     `${hasError ? 'border-red-500' : ''} input`;
 
-  if (roleLoading) {
+  if (roleLoading || fetching) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
@@ -148,9 +183,9 @@ export default function AddEmployeePage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Tambah Karyawan Baru
+            Edit Data Karyawan
           </h1>
-          <p className="text-gray-500 mt-1">Lengkapi data karyawan berikut</p>
+          <p className="text-gray-500 mt-1">Perbarui data karyawan dan status kepegawaian</p>
         </div>
         <button
           type="button"
@@ -247,6 +282,19 @@ export default function AddEmployeePage() {
                   className={inputClasses(!!errors.address)}
                   placeholder="Alamat lengkap"
                 />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer mt-2">
+                  <input
+                    type="checkbox"
+                    {...register('isActive')}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Karyawan Aktif
+                  </span>
+                </label>
               </div>
             </div>
           </div>
@@ -446,14 +494,14 @@ export default function AddEmployeePage() {
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
-            onClick={() => router.push('/employees')}
+            onClick={() => router.push(`/employees/${params.id}`)}
             className="btn btn-secondary"
           >
             Batal
           </button>
-          <button type="submit" disabled={loading} className="btn btn-primary">
+          <button type="submit" disabled={submitting} className="btn btn-primary">
             <Save className="h-4 w-4" />
-            {loading ? 'Menyimpan...' : 'Simpan Karyawan'}
+            {submitting ? 'Menyimpan...' : 'Simpan Perubahan'}
           </button>
         </div>
       </form>

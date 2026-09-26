@@ -112,8 +112,11 @@ export default function EmployeeListPage() {
     setSearch(searchInput);
   };
 
+  const canManage = user?.role === 'super_admin' || user?.role === 'hr_admin';
+
   const handleDelete = async (id: string) => {
     if (!window.confirm('Yakin ingin menghapus karyawan ini?')) return;
+    setError('');
 
     try {
       await api.delete(`/employees/${id}`);
@@ -122,8 +125,10 @@ export default function EmployeeListPage() {
       } else {
         await fetchEmployees();
       }
-    } catch (error) {
-      console.error('Failed to delete employee:', error);
+    } catch (err: unknown) {
+      console.error('Failed to delete employee:', err);
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      setError(axiosErr.response?.data?.error || 'Gagal menghapus karyawan. Pastikan Anda memiliki izin akses.');
     }
   };
 
@@ -152,10 +157,12 @@ export default function EmployeeListPage() {
             Kelola data karyawan, departemen, dan jabatan
           </p>
         </div>
-        <Link href="/employees/add" className="btn btn-primary">
-          <Plus className="h-4 w-4" />
-          Tambah Karyawan
-        </Link>
+        {canManage && (
+          <Link href="/employees/add" className="btn btn-primary">
+            <Plus className="h-4 w-4" />
+            Tambah Karyawan
+          </Link>
+        )}
       </div>
 
       {/* Filters */}
@@ -233,21 +240,25 @@ export default function EmployeeListPage() {
                             >
                               <Eye className="h-4 w-4" />
                             </Link>
-                            <button
-                              type="button"
-                              className="p-1.5 text-gray-500 hover:text-yellow-600 rounded-lg hover:bg-yellow-50"
-                              title="Edit (segera hadir)"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(employee.id)}
-                              className="p-1.5 text-gray-500 hover:text-red-600 rounded-lg hover:bg-red-50"
-                              title="Hapus karyawan"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {canManage && (
+                              <>
+                                <Link
+                                  href={`/employees/${employee.id}/edit`}
+                                  className="p-1.5 text-gray-500 hover:text-yellow-600 rounded-lg hover:bg-yellow-50"
+                                  title="Edit data karyawan"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(employee.id)}
+                                  className="p-1.5 text-gray-500 hover:text-red-600 rounded-lg hover:bg-red-50"
+                                  title="Hapus karyawan"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

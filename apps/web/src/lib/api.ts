@@ -1,14 +1,12 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import { refreshServerSession } from '@/lib/session'
+import { toast } from '@/stores/toast'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 api.interceptors.request.use(
@@ -87,10 +85,31 @@ api.interceptors.response.use(
     }
 
     if (typeof window !== 'undefined' && error?.response) {
+      const status = error.response.status
+      const method = error.config?.method?.toUpperCase() || 'GET'
+      const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)
+      const data = error.response.data
+      const detailMsg = Array.isArray(data?.details)
+        ? data.details.map((d: any) => d.message || `${d.path?.join('.')}: invalid`).join(', ')
+        : (typeof data?.details === 'string' ? data.details : '')
+      const errorMsg = detailMsg
+        ? `${data?.error || 'Validasi gagal'}: ${detailMsg}`
+        : (data?.error || data?.message)
+
       console.error(
-        `[API Error ${error.response.status}] ${error.config?.method?.toUpperCase()} ${error.config?.url}:`,
-        error.response.data
+        `[API Error ${status}] ${method} ${error.config?.url}:`,
+        data
       )
+
+      if (status === 403) {
+        toast.error('Akses ditolak: Anda tidak memiliki izin untuk tindakan ini.')
+      } else if (status === 429) {
+        toast.warning('Terlalu banyak permintaan (Rate limit). Silakan tunggu sebentar.')
+      } else if (isMutation && status >= 400 && status < 500 && errorMsg) {
+        toast.error(errorMsg)
+      } else if (isMutation && status >= 500) {
+        toast.error('Terjadi kesalahan pada server. Silakan coba lagi nanti.')
+      }
     }
 
     return Promise.reject(error)

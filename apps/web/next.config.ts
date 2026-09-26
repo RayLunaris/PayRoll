@@ -28,9 +28,7 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: `default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https:${
       process.env.NODE_ENV !== 'production' ? " 'unsafe-eval'" : ''
-    }; connect-src 'self' wss: https:${
-      process.env.NODE_ENV !== 'production' ? ' ws: http:' : ''
-    }; font-src 'self' data:;`,
+    }; connect-src 'self' wss: https: http: ws:; font-src 'self' data:;`,
   },
 ]
 

@@ -90,7 +90,7 @@ export default function LeaveHistoryPage() {
     setActionMessage(null);
 
     try {
-      await api.put(`/leaves/${id}/cancel`);
+      await api.put(`/leaves/${id}/cancel`, {});
       setActionMessage({
         type: 'success',
         text: 'Pengajuan cuti berhasil dibatalkan.',

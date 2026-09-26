@@ -16,10 +16,12 @@ export async function buildApp() {
   }
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
+    trustProxy: true,
   });
 
   // 1. CORS Configuration — comma-separated origins (e.g. Vercel prod + *.vercel.app previews)
-  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+  const defaultOrigins = 'http://localhost:3000,http://127.0.0.1:3000';
+  const allowedOrigins = (process.env.CORS_ORIGIN ? `${process.env.CORS_ORIGIN},${defaultOrigins}` : defaultOrigins)
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);

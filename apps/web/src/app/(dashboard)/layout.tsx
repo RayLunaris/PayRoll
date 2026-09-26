@@ -2,6 +2,7 @@
 
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
+import ToastContainer from '@/components/ui/ToastContainer'
 import { useRequireAuth } from '@/hooks/useAuth'
 import { useUIStore } from '@/stores/ui'
 
@@ -28,6 +29,7 @@ export default function DashboardLayout({
         <Header />
         <main className="p-6">{children}</main>
       </div>
+      <ToastContainer />
     </div>
   )
 }

@@ -134,9 +134,14 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     try {
       const { data } = await api.get('/auth/me')
       set({ user: data.data, isAuthenticated: true, isLoading: false, restoreAttempted: true })
-    } catch {
+    } catch (err: unknown) {
       set({ isLoading: false, restoreAttempted: true })
-      await get().logout()
+      const status = (err as { response?: { status?: number } })?.response?.status
+      // Only logout when token is strictly unauthorized (401).
+      // Do NOT logout on transient errors like 429 RateLimit, 500, or network failures.
+      if (status === 401) {
+        await get().logout()
+      }
     }
   },
 

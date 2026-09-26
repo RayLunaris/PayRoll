@@ -2,10 +2,10 @@ import { FastifyInstance } from 'fastify';
 import { FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 
-const UNRATE_LIMITED_PATHS = ['/', '/health', '/healthcheck', '/docs'];
+const UNRATE_LIMITED_PATHS = ['/', '/health', '/healthcheck', '/docs', '/auth/me', '/api/auth/me'];
 
 export async function registerRateLimit(app: FastifyInstance) {
-  const max = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
+  const max = parseInt(process.env.RATE_LIMIT_MAX || '1000', 10);
   const timeWindow = process.env.RATE_LIMIT_WINDOW || '1 minute';
 
   await app.register(rateLimit, {

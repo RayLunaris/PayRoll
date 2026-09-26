@@ -92,7 +92,7 @@ export default function AbuseDetectionPage() {
     if (!confirm('Tandai pelanggaran ini sebagai telah ditinjau dan diselesaikan?')) return;
     setResolvingId(id);
     try {
-      await api.put(`/attendance/abuse-logs/${id}/resolve`);
+      await api.put(`/attendance/abuse-logs/${id}/resolve`, {});
       await fetchAbuseLogs();
     } catch (err) {
       console.error('Failed to resolve abuse log:', err);
