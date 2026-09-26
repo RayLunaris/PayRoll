@@ -6,7 +6,8 @@ import Link from 'next/link';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
-import { Plus, Search, Users, Pencil, Trash2, Eye } from 'lucide-react';
+import { toast } from '@/stores/toast';
+import { Plus, Search, Users, Pencil, Trash2, Eye, AlertTriangle, X } from 'lucide-react';
 
 interface Employee {
   id: string;
@@ -45,6 +46,18 @@ export default function EmployeeListPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Modal State for Payroll Protected Employee
+  const [payrollModal, setPayrollModal] = useState<{
+    isOpen: boolean;
+    employee: Employee | null;
+    canForce: boolean;
+  }>({
+    isOpen: false,
+    employee: null,
+    canForce: false,
+  });
 
   const fetchDepartments = useCallback(async () => {
     try {
@@ -114,12 +127,41 @@ export default function EmployeeListPage() {
 
   const canManage = user?.role === 'super_admin' || user?.role === 'hr_admin';
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Yakin ingin menghapus karyawan ini?')) return;
-    setError('');
+  // Toggle status Aktif / Nonaktif
+  const handleToggleStatus = async (employee: Employee) => {
+    const nextStatus = !employee.isActive;
+    const actionLabel = nextStatus ? 'mengaktifkan' : 'menonaktifkan';
+    if (!window.confirm(`Yakin ingin ${actionLabel} karyawan ${employee.fullName}?`)) return;
 
     try {
-      await api.delete(`/employees/${id}`);
+      await api.put(`/employees/${employee.id}`, { isActive: nextStatus });
+      toast.success(
+        `Karyawan ${employee.fullName} berhasil di-${nextStatus ? 'aktifkan' : 'nonaktifkan'}`
+      );
+      setEmployees((prev) =>
+        prev.map((emp) => (emp.id === employee.id ? { ...emp, isActive: nextStatus } : emp))
+      );
+    } catch (err: unknown) {
+      console.error('Failed to update employee status:', err);
+      toast.error('Gagal memperbarui status karyawan.');
+    }
+  };
+
+  // Delete employee with payroll guard & force support
+  const handleDelete = async (employee: Employee, force = false) => {
+    if (!force && !window.confirm(`Yakin ingin menghapus karyawan ${employee.fullName}?`)) return;
+    setError('');
+    setActionLoading(true);
+
+    try {
+      await api.delete(`/employees/${employee.id}${force ? '?force=true' : ''}`);
+      toast.success(
+        force
+          ? `Karyawan ${employee.fullName} dan riwayat payroll berhasil dihapus permanen.`
+          : `Karyawan ${employee.fullName} berhasil dihapus.`
+      );
+      setPayrollModal({ isOpen: false, employee: null, canForce: false });
+
       if (employees.length === 1 && page > 1) {
         setPage((p) => p - 1);
       } else {
@@ -127,8 +169,52 @@ export default function EmployeeListPage() {
       }
     } catch (err: unknown) {
       console.error('Failed to delete employee:', err);
-      const axiosErr = err as { response?: { data?: { error?: string } } };
-      setError(axiosErr.response?.data?.error || 'Gagal menghapus karyawan. Pastikan Anda memiliki izin akses.');
+      const axiosErr = err as {
+        response?: {
+          status?: number;
+          data?: { error?: string; hasPayroll?: boolean; canForce?: boolean };
+        };
+      };
+      const resData = axiosErr.response?.data;
+
+      if (resData?.hasPayroll) {
+        // Open the payroll protection modal with actions
+        setPayrollModal({
+          isOpen: true,
+          employee,
+          canForce: user?.role === 'super_admin' || resData?.canForce === true,
+        });
+      } else {
+        const errorMsg = resData?.error || 'Gagal menghapus karyawan. Pastikan Anda memiliki izin akses.';
+        setError(errorMsg);
+        toast.error(errorMsg);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Deactivate employee from protection modal
+  const handleDeactivateFromModal = async () => {
+    if (!payrollModal.employee) return;
+    setActionLoading(true);
+    try {
+      await api.put(`/employees/${payrollModal.employee.id}`, { isActive: false });
+      toast.success(
+        `Status karyawan ${payrollModal.employee.fullName} berhasil diubah menjadi Nonaktif.`
+      );
+      setEmployees((prev) =>
+        prev.map((emp) =>
+          emp.id === payrollModal.employee?.id ? { ...emp, isActive: false } : emp
+        )
+      );
+      setPayrollModal({ isOpen: false, employee: null, canForce: false });
+      setError('');
+    } catch (err: unknown) {
+      console.error('Failed to deactivate employee:', err);
+      toast.error('Gagal menonaktifkan karyawan.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -142,8 +228,21 @@ export default function EmployeeListPage() {
       <Breadcrumb />
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {error}
+        <div className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-red-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          {payrollModal.employee && (
+            <button
+              type="button"
+              onClick={handleDeactivateFromModal}
+              disabled={actionLoading}
+              className="btn btn-sm bg-red-600 hover:bg-red-700 text-white border-none whitespace-nowrap"
+            >
+              Nonaktifkan Sekarang
+            </button>
+          )}
         </div>
       )}
 
@@ -221,15 +320,30 @@ export default function EmployeeListPage() {
                         <td>{employee.phone || '-'}</td>
                         <td>{formatDate(employee.joinDate)}</td>
                         <td>
-                          <span
-                            className={
-                              employee.isActive
-                                ? 'badge badge-success'
-                                : 'badge badge-danger'
-                            }
-                          >
-                            {employee.isActive ? 'Aktif' : 'Nonaktif'}
-                          </span>
+                          {canManage ? (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStatus(employee)}
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold cursor-pointer transition-all ${
+                                employee.isActive
+                                  ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                  : 'bg-red-100 text-red-800 hover:bg-red-200'
+                              }`}
+                              title={`Klik untuk ${employee.isActive ? 'menonaktifkan' : 'mengaktifkan'}`}
+                            >
+                              {employee.isActive ? 'Aktif' : 'Nonaktif'}
+                            </button>
+                          ) : (
+                            <span
+                              className={
+                                employee.isActive
+                                  ? 'badge badge-success'
+                                  : 'badge badge-danger'
+                              }
+                            >
+                              {employee.isActive ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <div className="flex items-center gap-1">
@@ -251,7 +365,7 @@ export default function EmployeeListPage() {
                                 </Link>
                                 <button
                                   type="button"
-                                  onClick={() => handleDelete(employee.id)}
+                                  onClick={() => handleDelete(employee)}
                                   className="p-1.5 text-gray-500 hover:text-red-600 rounded-lg hover:bg-red-50"
                                   title="Hapus karyawan"
                                 >
@@ -297,6 +411,71 @@ export default function EmployeeListPage() {
           </>
         )}
       </div>
+
+      {/* Modal Proteksi Payroll */}
+      {payrollModal.isOpen && payrollModal.employee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="card max-w-md w-full bg-white shadow-2xl rounded-xl p-6 relative animate-in fade-in zoom-in duration-150">
+            <button
+              type="button"
+              onClick={() => setPayrollModal({ isOpen: false, employee: null, canForce: false })}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              disabled={actionLoading}
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-3 bg-amber-100 text-amber-600 rounded-full flex-shrink-0">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Riwayat Penggajian Terdeteksi
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Karyawan <strong className="text-gray-900">{payrollModal.employee.fullName}</strong> ({payrollModal.employee.nip}) sudah memiliki catatan slip gaji/payroll di sistem.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-5 leading-relaxed">
+              <strong>Mengapa dilindungi?</strong> Untuk kepatuhan perpajakan (PPh 21) dan integritas audit keuangan, karyawan dengan slip gaji tidak boleh dihapus secara permanen.
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={handleDeactivateFromModal}
+                disabled={actionLoading}
+                className="btn btn-warning w-full justify-center text-sm py-2.5 font-medium shadow-sm"
+              >
+                {actionLoading ? 'Memproses...' : 'Ubah Status Menjadi Nonaktif (Disarankan)'}
+              </button>
+
+              {payrollModal.canForce && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(payrollModal.employee!, true)}
+                  disabled={actionLoading}
+                  className="btn btn-danger w-full justify-center text-sm py-2.5 font-medium"
+                >
+                  {actionLoading ? 'Menghapus...' : 'Hapus Paksa (Hapus Karyawan & Payroll Dummy)'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setPayrollModal({ isOpen: false, employee: null, canForce: false })}
+                disabled={actionLoading}
+                className="btn btn-secondary w-full justify-center text-sm py-2"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,34 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, employees, departments, positions, workLocations, users, eq, and, or, desc, sql } from '@payrollpro/db';
+import {
+  db,
+  employees,
+  departments,
+  positions,
+  workLocations,
+  users,
+  leaveQuotas,
+  leaves,
+  attendances,
+  abuseLogs,
+  cashAdvances,
+  employeeShifts,
+  shiftSwaps,
+  overtimeRequests,
+  projectMembers,
+  payrolls,
+  passwordResetTokens,
+  notifications,
+  messages,
+  socialLikes,
+  socialComments,
+  socialPosts,
+  eq,
+  and,
+  or,
+  desc,
+  sql,
+} from '@payrollpro/db';
 import type { SQL } from '@payrollpro/db';
 import { requireRole } from '../middleware/auth.js';
 
@@ -288,6 +316,14 @@ export async function employeeRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'Employee not found' });
       }
 
+      // Sync isActive status to linked user account if present
+      if (body.isActive !== undefined) {
+        if (updated[0].userId) {
+          await db.update(users).set({ isActive: body.isActive }).where(eq(users.id, updated[0].userId));
+        }
+        await db.update(users).set({ isActive: body.isActive }).where(eq(users.employeeId, id));
+      }
+
       return reply.send({ success: true, data: updated[0] });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -307,16 +343,100 @@ export async function employeeRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
-      const deleted = await db.delete(employees).where(eq(employees.id, id)).returning();
-      
-      if (deleted.length === 0) {
-        return reply.status(404).send({ success: false, error: 'Employee not found' });
-      }
 
-      return reply.send({ success: true, message: 'Employee deleted' });
-    } catch (error) {
+      return await db.transaction(async (tx) => {
+        // 1. Check employee existence
+        const [targetEmployee] = await tx
+          .select()
+          .from(employees)
+          .where(eq(employees.id, id))
+          .limit(1);
+
+        if (!targetEmployee) {
+          return reply.status(404).send({ success: false, error: 'Employee not found' });
+        }
+
+        // 2. Prevent self-deletion
+        const currentUser = request.user;
+        if (targetEmployee.userId === currentUser.id || targetEmployee.id === (currentUser as any).employeeId) {
+          return reply.status(400).send({ success: false, error: 'Tidak dapat menghapus akun Anda sendiri' });
+        }
+
+        // 3. Check for financial / payroll history
+        const [hasPayroll] = await tx
+          .select({ count: sql<string>`count(*)` })
+          .from(payrolls)
+          .where(eq(payrolls.employeeId, id));
+
+        const payrollCount = parseInt(hasPayroll?.count || '0', 10);
+        const isForce =
+          ((request.query as any)?.force === 'true' || (request.query as any)?.force === true) &&
+          currentUser.role === 'super_admin';
+
+        if (payrollCount > 0) {
+          if (!isForce) {
+            return reply.status(400).send({
+              success: false,
+              hasPayroll: true,
+              canForce: currentUser.role === 'super_admin',
+              error:
+                'Karyawan tidak dapat dihapus permanen karena sudah memiliki riwayat penggajian (payroll). Silakan ubah status karyawan menjadi Nonaktif.',
+            });
+          }
+          // Force delete: remove payroll records for test data cleanup
+          await tx.delete(payrolls).where(eq(payrolls.employeeId, id));
+        }
+
+        // 4. Cascade delete employee-dependent records
+        await tx.delete(leaveQuotas).where(eq(leaveQuotas.employeeId, id));
+        await tx.delete(leaves).where(eq(leaves.employeeId, id));
+        await tx.delete(attendances).where(eq(attendances.employeeId, id));
+        await tx.delete(abuseLogs).where(eq(abuseLogs.employeeId, id));
+        await tx.delete(cashAdvances).where(eq(cashAdvances.employeeId, id));
+        await tx.delete(employeeShifts).where(eq(employeeShifts.employeeId, id));
+        await tx.delete(shiftSwaps).where(or(eq(shiftSwaps.requesterId, id), eq(shiftSwaps.targetId, id)));
+        await tx.delete(overtimeRequests).where(eq(overtimeRequests.employeeId, id));
+        await tx.delete(projectMembers).where(eq(projectMembers.employeeId, id));
+
+        // 5. Unlink any user pointing to this employee
+        await tx.update(users).set({ employeeId: null }).where(eq(users.employeeId, id));
+
+        // 6. Delete employee record
+        await tx.delete(employees).where(eq(employees.id, id));
+
+        // 7. If employee has an associated user account, delete user if employee role
+        if (targetEmployee.userId) {
+          const [associatedUser] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, targetEmployee.userId))
+            .limit(1);
+
+          if (associatedUser) {
+            if (associatedUser.role === 'employee') {
+              // Delete user-related activity/records first
+              await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, associatedUser.id));
+              await tx.delete(notifications).where(eq(notifications.userId, associatedUser.id));
+              await tx.delete(messages).where(or(eq(messages.senderId, associatedUser.id), eq(messages.receiverId, associatedUser.id)));
+              await tx.delete(socialLikes).where(eq(socialLikes.userId, associatedUser.id));
+              await tx.delete(socialComments).where(eq(socialComments.userId, associatedUser.id));
+              await tx.delete(socialPosts).where(eq(socialPosts.userId, associatedUser.id));
+              await tx.delete(users).where(eq(users.id, associatedUser.id));
+            } else {
+              // If associated user is an admin or manager, only unlink employeeId
+              await tx.update(users).set({ employeeId: null }).where(eq(users.id, associatedUser.id));
+            }
+          }
+        }
+
+        return reply.send({ success: true, message: 'Employee and user account successfully deleted' });
+      });
+    } catch (error: any) {
       app.log.error(error);
-      return reply.status(500).send({ success: false, error: 'Internal server error' });
+      return reply.status(500).send({
+        success: false,
+        error: error?.message || 'Gagal menghapus karyawan karena dependensi data terkait.',
+      });
     }
   });
 
