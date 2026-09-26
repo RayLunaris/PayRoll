@@ -6,6 +6,7 @@ services:
       context: .
       dockerfile: docker/postgres/Dockerfile
     container_name: payrollpro-postgres
+    mem_limit: 256m
     environment:
       POSTGRES_DB: payrollpro
       POSTGRES_USER: postgres
@@ -24,6 +25,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: payrollpro-redis
+    mem_limit: 64m
     ports:
       - "6379:6379"
     volumes:
@@ -33,6 +35,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: payrollpro-db-migrate
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/payrollpro
+    command: ["sh", "-c", "pnpm --filter @payrollpro/db push && pnpm --filter @payrollpro/db seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   auth-service:
     build:
