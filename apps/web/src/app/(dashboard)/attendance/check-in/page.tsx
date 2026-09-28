@@ -32,6 +32,7 @@ interface AttendanceRecord {
   checkOut: string | null;
   overtimeHours: string;
   checkInPhotoUrl?: string | null;
+  locationId?: string | null;
 }
 
 function formatTime(date: string): string {
@@ -170,7 +171,19 @@ export default function CheckInPage() {
     setLocationsError('');
     api
       .get<{ data: WorkLocation[] }>('/locations')
-      .then((res) => setWorkLocations(res.data.data))
+      .then((res) => {
+        const raw = res.data.data || [];
+        const seen = new Set<string>();
+        const unique = raw
+          .filter((loc) => {
+            const key = loc.name.trim().toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        setWorkLocations(unique);
+      })
       .catch(() => setLocationsError('Gagal memuat daftar lokasi kerja.'))
       .finally(() => setLocationsLoading(false));
   }, []);
@@ -187,7 +200,13 @@ export default function CheckInPage() {
     setAttendanceError('');
     api
       .get<{ data: AttendanceRecord | null }>('/attendance/today')
-      .then((res) => setTodayAttendance(res.data.data))
+      .then((res) => {
+        const att = res.data.data;
+        setTodayAttendance(att);
+        if (att?.locationId) {
+          setSelectedLocation(att.locationId);
+        }
+      })
       .catch(() => setAttendanceError('Gagal memuat status kehadiran hari ini.'))
       .finally(() => setAttendanceLoading(false));
   }, []);
@@ -196,6 +215,12 @@ export default function CheckInPage() {
     const timer = window.setTimeout(() => void fetchTodayAttendance(), 0);
     return () => window.clearTimeout(timer);
   }, [fetchTodayAttendance]);
+
+  useEffect(() => {
+    if (todayAttendance?.locationId && !selectedLocation) {
+      setSelectedLocation(todayAttendance.locationId);
+    }
+  }, [todayAttendance?.locationId, selectedLocation]);
 
   const handleCheckIn = async () => {
     if (!gpsPosition) {
@@ -250,32 +275,6 @@ export default function CheckInPage() {
     }
   };
 
-  const handleCheckOut = async () => {
-    if (!gpsPosition) {
-      setError('Lokasi GPS belum tersedia. Mohon izinkan akses GPS.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const res = await api.post<{ data: AttendanceRecord }>('/attendance/check-out', {
-        latitude: gpsPosition.coords.latitude,
-        longitude: gpsPosition.coords.longitude,
-        accuracy: gpsPosition.coords.accuracy,
-      });
-      setSuccess('Check-out berhasil!');
-      setTodayAttendance(res.data.data);
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { error?: string } } };
-      setError(axiosErr.response?.data?.error || 'Terjadi kesalahan. Silakan coba lagi.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const userMapLocation = gpsPosition
     ? { lat: gpsPosition.coords.latitude, lng: gpsPosition.coords.longitude }
     : null;
@@ -299,6 +298,103 @@ export default function CheckInPage() {
             : selectedLocObj.longitude,
         )
       : null;
+
+  const handleCheckOut = async () => {
+    if (!gpsPosition) {
+      setError('Lokasi GPS belum tersedia. Mohon izinkan akses GPS.');
+      return;
+    }
+
+    if (selectedLocObj && distanceToSelected !== null && distanceToSelected > selectedLocObj.radiusMeters) {
+      setError(
+        `Anda berada di luar area ${selectedLocObj.name} (jarak: ${
+          distanceToSelected > 1000 ? `${(distanceToSelected / 1000).toFixed(1)} km` : `${distanceToSelected} meter`
+        }, radius izin: ${selectedLocObj.radiusMeters}m).${
+          isDevOrAdmin ? ' Silakan klik tombol simulasi kantor di atas untuk pengujian.' : ''
+        }`
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const res = await api.post<{ data: AttendanceRecord }>('/attendance/check-out', {
+        latitude: gpsPosition.coords.latitude,
+        longitude: gpsPosition.coords.longitude,
+        accuracy: gpsPosition.coords.accuracy,
+      });
+      setSuccess('Check-out berhasil!');
+      setTodayAttendance(res.data.data);
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: {
+          data?: {
+            error?: string;
+            distance?: number;
+            allowedRadius?: number;
+          };
+        };
+      };
+      if (axiosErr.response?.data?.error === 'Outside work area') {
+        const dist = axiosErr.response.data.distance;
+        const rad = axiosErr.response.data.allowedRadius || 100;
+        const distText = dist ? (dist > 1000 ? `${(dist / 1000).toFixed(1)} km` : `${dist} meter`) : '';
+        setError(
+          `Di luar area kantor (jarak: ${distText}, radius izin: ${rad}m).${
+            isDevOrAdmin ? ' Untuk pengujian di laptop, silakan klik tombol Simulasi Lokasi di atas.' : ''
+          }`
+        );
+      } else {
+        setError(axiosErr.response?.data?.error || 'Terjadi kesalahan. Silakan coba lagi.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderSimulationPanel = () => {
+    if (!isDevOrAdmin || workLocations.length === 0) return null;
+    return (
+      <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-lg space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-purple-900 flex items-center gap-1.5">
+            <Sparkles className="h-4 w-4 text-purple-600" />
+            Simulasi Lokasi Pengujian (Dev / Admin)
+          </span>
+          {isSimulated && (
+            <span className="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded font-semibold">
+              Simulasi Aktif
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-purple-700 leading-normal">
+          Klik kantor untuk menyetel koordinat pengujian tepat di lokasi kerja (menghindari hambatan GeoIP laptop):
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {workLocations.map((loc) => {
+            const isChosen = isSimulated && selectedLocation === loc.id;
+            return (
+              <button
+                key={loc.id}
+                type="button"
+                onClick={() => handleSimulateLocation(loc)}
+                className={`text-xs px-3 py-1.5 rounded-md font-medium border transition-all ${
+                  isChosen
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100/80'
+                }`}
+              >
+                📍 {loc.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -488,13 +584,53 @@ export default function CheckInPage() {
                     </div>
                   </div>
                 ) : (
-                  <button
-                    onClick={handleCheckOut}
-                    disabled={isSubmitting}
-                    className="btn btn-secondary w-full py-4 text-base"
-                  >
-                    {isSubmitting ? 'Memproses...' : 'Check-out Sekarang'}
-                  </button>
+                  <div className="space-y-4 pt-1">
+                    {/* Dev/Admin Location Simulation Panel */}
+                    {renderSimulationPanel()}
+
+                    {/* Real-time distance indicator for Check-Out */}
+                    {selectedLocObj && distanceToSelected !== null && (
+                      <div
+                        className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                          distanceToSelected <= selectedLocObj.radiusMeters
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            : 'bg-amber-50 border-amber-200 text-amber-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Info className="h-4 w-4 shrink-0" />
+                          <span>
+                            Jarak ke {selectedLocObj.name}:{' '}
+                            <strong>
+                              {distanceToSelected > 1000
+                                ? `${(distanceToSelected / 1000).toFixed(1)} km`
+                                : `${distanceToSelected} m`}
+                            </strong>{' '}
+                            (Radius izin: {selectedLocObj.radiusMeters}m)
+                          </span>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
+                            distanceToSelected <= selectedLocObj.radiusMeters
+                              ? 'bg-emerald-200 text-emerald-900'
+                              : 'bg-amber-200 text-amber-900'
+                          }`}
+                        >
+                          {distanceToSelected <= selectedLocObj.radiusMeters
+                            ? 'Dalam Jangkauan'
+                            : 'Di Luar Jangkauan'}
+                        </span>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleCheckOut}
+                      disabled={isSubmitting}
+                      className="btn btn-secondary w-full py-4 text-base"
+                    >
+                      {isSubmitting ? 'Memproses...' : 'Check-out Sekarang'}
+                    </button>
+                  </div>
                 )}
 
                 {parseFloat(todayAttendance.overtimeHours) > 0 && (
@@ -510,43 +646,7 @@ export default function CheckInPage() {
             ) : (
               <div className="space-y-4">
                 {/* Dev/Admin Location Simulation Panel */}
-                {isDevOrAdmin && workLocations.length > 0 && (
-                  <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-purple-900 flex items-center gap-1.5">
-                        <Sparkles className="h-4 w-4 text-purple-600" />
-                        Simulasi Lokasi Pengujian (Dev / Admin)
-                      </span>
-                      {isSimulated && (
-                        <span className="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded font-semibold">
-                          Simulasi Aktif
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-purple-700 leading-normal">
-                      Klik kantor untuk menyetel koordinat pengujian tepat di lokasi kerja (menghindari hambatan GeoIP laptop):
-                    </p>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {workLocations.map((loc) => {
-                        const isChosen = isSimulated && selectedLocation === loc.id;
-                        return (
-                          <button
-                            key={loc.id}
-                            type="button"
-                            onClick={() => handleSimulateLocation(loc)}
-                            className={`text-xs px-3 py-1.5 rounded-md font-medium border transition-all ${
-                              isChosen
-                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                                : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100/80'
-                            }`}
-                          >
-                            📍 {loc.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                {renderSimulationPanel()}
 
                 {/* Selfie Verification */}
                 <SelfieCamera

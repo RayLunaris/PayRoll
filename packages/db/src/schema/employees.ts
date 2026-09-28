@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, decimal, date, boolean, timestamp, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, decimal, date, boolean, timestamp, integer, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { departments } from './departments';
 import { positions } from './positions';
@@ -26,4 +26,8 @@ export const employees = pgTable('employees', {
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-});
+}, (table) => ({
+  idxEmployeesDepartment: index('idx_employees_department').on(table.departmentId),
+  idxEmployeesUserId: index('idx_employees_user_id').on(table.userId),
+  idxEmployeesIsActive: index('idx_employees_is_active').on(table.isActive),
+}));

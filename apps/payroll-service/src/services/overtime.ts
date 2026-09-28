@@ -1,4 +1,4 @@
-import { db, overtimeRates, attendances, overtimeRequests, eq, and, gte, lte } from '@payrollpro/db';
+import { db, overtimeRates, attendances, overtimeRequests, eq, and, gte, lte, getCached } from '@payrollpro/db';
 
 export interface OvertimePayResult {
   totalHours: number;
@@ -63,7 +63,9 @@ export async function calculateOvertimePay(
   let totalPay = 0;
 
   // Cache rate multipliers
-  const activeRates = await db.select().from(overtimeRates).where(eq(overtimeRates.isActive, true));
+  const activeRates = await getCached('master:overtime-rates:active', 600, () =>
+    db.select().from(overtimeRates).where(eq(overtimeRates.isActive, true))
+  );
   const rateMap: Record<string, number> = {};
   for (const r of activeRates) {
     if (r.dayType) {

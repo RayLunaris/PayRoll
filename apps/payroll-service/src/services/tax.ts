@@ -1,4 +1,4 @@
-import { db, taxConfig, eq, asc } from '@payrollpro/db';
+import { db, taxConfig, eq, asc, getCached } from '@payrollpro/db';
 
 // PTKP (Penghasilan Tidak Kena Pajak) 2024
 export const PTKP: Record<string, number> = {
@@ -46,10 +46,12 @@ export async function calculatePPh21(
   // PKP (Penghasilan Kena Pajak) dibulatkan ke bawah ribuan
   const pkp = Math.max(0, Math.floor((annualNet - ptkpAmount) / 1000) * 1000);
 
-  // Get active progressive tax brackets ordered from lowest
-  const brackets = await db.select().from(taxConfig)
-    .where(eq(taxConfig.isActive, true))
-    .orderBy(asc(taxConfig.bracketFrom));
+  // Get active progressive tax brackets ordered from lowest (cached)
+  const brackets = await getCached('master:tax-config:active', 600, () =>
+    db.select().from(taxConfig)
+      .where(eq(taxConfig.isActive, true))
+      .orderBy(asc(taxConfig.bracketFrom))
+  );
 
   // Calculate progressive tax
   let annualTax = 0;

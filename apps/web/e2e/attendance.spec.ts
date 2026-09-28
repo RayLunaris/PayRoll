@@ -10,7 +10,7 @@ import {
   apiDeleteUser,
 } from './helpers';
 
-// Head Office (Djavasoft) seeded coordinate (radius 100m)
+// Head Office (Kantor 1) seeded coordinate (radius 100m)
 const HEAD_OFFICE_LAT = -8.0618388;
 const HEAD_OFFICE_LNG = 111.9119472;
 

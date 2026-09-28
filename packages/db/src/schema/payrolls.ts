@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, decimal, varchar, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, integer, decimal, varchar, text, timestamp, unique, index } from 'drizzle-orm/pg-core';
 import { employees } from './employees';
 
 export const payrolls = pgTable('payrolls', {
@@ -22,4 +22,6 @@ export const payrolls = pgTable('payrolls', {
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
   uniqueEmployeePeriod: unique('unique_employee_period').on(table.employeeId, table.periodMonth, table.periodYear),
+  idxPayrollsPeriod: index('idx_payrolls_period').on(table.periodYear, table.periodMonth),
+  idxPayrollsEmployee: index('idx_payrolls_employee').on(table.employeeId),
 }));

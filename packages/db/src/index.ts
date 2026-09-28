@@ -4,6 +4,7 @@ import * as schema from './schema/index';
 
 export * from './schema/index';
 export * from './notifications';
+export * from './cache';
 export * from 'drizzle-orm';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres123@localhost:5432/payrollpro';

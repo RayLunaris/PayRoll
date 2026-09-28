@@ -35,31 +35,44 @@ export interface PayrollResult {
   };
 }
 
+export interface ProcessEmployeePayrollOptions {
+  preloadedEmployee?: typeof employees.$inferSelect;
+  preloadedPositions?: Map<string, typeof positions.$inferSelect>;
+  preloadedCashAdvances?: typeof cashAdvances.$inferSelect[];
+}
+
 // Process payroll for a single employee with transactional consistency and period lock
 export async function processEmployeePayroll(
   employeeId: string,
   month: number,
-  year: number
+  year: number,
+  options?: ProcessEmployeePayrollOptions
 ): Promise<PayrollResult> {
   // Get employee
-  const employee = await db.select().from(employees).where(eq(employees.id, employeeId)).limit(1);
-  if (employee.length === 0) {
-    throw new Error('Employee not found');
+  let emp = options?.preloadedEmployee;
+  if (!emp) {
+    const employee = await db.select().from(employees).where(eq(employees.id, employeeId)).limit(1);
+    if (employee.length === 0) {
+      throw new Error('Employee not found');
+    }
+    emp = employee[0];
   }
-
-  const emp = employee[0];
 
   // Base salary resolution (from employee or position fallback)
   let baseSalary = parseFloat(emp.baseSalary || '0');
   let positionAllowance = 0;
   if (emp.positionId) {
-    const position = await db.select().from(positions).where(eq(positions.id, emp.positionId)).limit(1);
-    if (position.length > 0) {
-      if (baseSalary <= 0 && position[0].baseSalary) {
-        baseSalary = parseFloat(position[0].baseSalary);
+    let position = options?.preloadedPositions?.get(emp.positionId);
+    if (!position) {
+      const posRes = await db.select().from(positions).where(eq(positions.id, emp.positionId)).limit(1);
+      if (posRes.length > 0) position = posRes[0];
+    }
+    if (position) {
+      if (baseSalary <= 0 && position.baseSalary) {
+        baseSalary = parseFloat(position.baseSalary);
       }
-      if (position[0].positionAllowance) {
-        positionAllowance = parseFloat(position[0].positionAllowance);
+      if (position.positionAllowance) {
+        positionAllowance = parseFloat(position.positionAllowance);
       }
     }
   }
@@ -94,13 +107,15 @@ export async function processEmployeePayroll(
   const tax = await calculatePPh21(grossSalary, 0, ptkpStatus, Boolean(emp.npwp));
 
   // Cash advances approved or previously deducted for this period (safe on re-processing)
-  const advances = await db.select().from(cashAdvances)
-    .where(and(
-      eq(cashAdvances.employeeId, employeeId),
-      eq(cashAdvances.month, month),
-      eq(cashAdvances.year, year),
-      or(eq(cashAdvances.status, 'approved'), eq(cashAdvances.status, 'deducted'))
-    ));
+  const advances = options?.preloadedCashAdvances !== undefined
+    ? options.preloadedCashAdvances
+    : await db.select().from(cashAdvances)
+        .where(and(
+          eq(cashAdvances.employeeId, employeeId),
+          eq(cashAdvances.month, month),
+          eq(cashAdvances.year, year),
+          or(eq(cashAdvances.status, 'approved'), eq(cashAdvances.status, 'deducted'))
+        ));
 
   const totalCashAdvance = advances.reduce((sum, a) => sum + parseFloat(a.amount || '0'), 0);
 
@@ -253,11 +268,46 @@ export async function processAllPayrolls(month: number, year: number, employeeId
   const allEmployees = employeeIds && employeeIds.length > 0
     ? await db.select().from(employees).where(and(eq(employees.isActive, true), inArray(employees.id, employeeIds)))
     : await db.select().from(employees).where(eq(employees.isActive, true));
+
+  if (allEmployees.length === 0) {
+    return [];
+  }
+
+  // 1. Batch pre-fetch all positions referenced by active employees
+  const positionIds = Array.from(new Set(allEmployees.map((e) => e.positionId).filter(Boolean))) as string[];
+  const positionMap = new Map<string, typeof positions.$inferSelect>();
+  if (positionIds.length > 0) {
+    const posList = await db.select().from(positions).where(inArray(positions.id, positionIds));
+    for (const p of posList) {
+      positionMap.set(p.id, p);
+    }
+  }
+
+  // 2. Batch pre-fetch all cash advances for these employees in this period
+  const activeEmpIds = allEmployees.map((e) => e.id);
+  const advances = await db.select().from(cashAdvances)
+    .where(and(
+      inArray(cashAdvances.employeeId, activeEmpIds),
+      eq(cashAdvances.month, month),
+      eq(cashAdvances.year, year),
+      or(eq(cashAdvances.status, 'approved'), eq(cashAdvances.status, 'deducted'))
+    ));
+  const advanceMap = new Map<string, typeof cashAdvances.$inferSelect[]>();
+  for (const a of advances) {
+    if (!a.employeeId) continue;
+    if (!advanceMap.has(a.employeeId)) advanceMap.set(a.employeeId, []);
+    advanceMap.get(a.employeeId)!.push(a);
+  }
+
   const results: PayrollResult[] = [];
 
   for (const emp of allEmployees) {
     try {
-      const result = await processEmployeePayroll(emp.id, month, year);
+      const result = await processEmployeePayroll(emp.id, month, year, {
+        preloadedEmployee: emp,
+        preloadedPositions: positionMap,
+        preloadedCashAdvances: advanceMap.get(emp.id) || [],
+      });
       results.push(result);
     } catch (error) {
       console.error(`Failed to process payroll for employee ${emp.id}:`, error);

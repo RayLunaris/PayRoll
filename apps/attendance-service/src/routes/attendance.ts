@@ -505,7 +505,13 @@ export async function attendanceRoutes(app: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const user = request.user;
-      const { startDate, endDate, employeeId } = request.query as { startDate?: string; endDate?: string; employeeId?: string };
+      const { startDate, endDate, employeeId, page, limit } = request.query as {
+        startDate?: string;
+        endDate?: string;
+        employeeId?: string;
+        page?: string | number;
+        limit?: string | number;
+      };
 
       let targetEmployeeId: string;
       if (user.role === 'employee') {
@@ -553,11 +559,48 @@ export async function attendanceRoutes(app: FastifyInstance) {
         conditions.push(lte(attendances.date, endDate));
       }
 
-      const data = await db.select().from(attendances)
-        .where(and(...conditions))
-        .orderBy(desc(attendances.date));
+      const parsedLimit = limit ? Math.min(200, Math.max(1, parseInt(limit.toString(), 10))) : undefined;
+      const parsedPage = page ? Math.max(1, parseInt(page.toString(), 10)) : 1;
+      const offset = parsedLimit ? (parsedPage - 1) * parsedLimit : undefined;
 
-      return reply.send({ success: true, data });
+      const baseQuery = db.select({
+        id: attendances.id,
+        employeeId: attendances.employeeId,
+        locationId: attendances.locationId,
+        date: attendances.date,
+        checkIn: attendances.checkIn,
+        checkOut: attendances.checkOut,
+        checkInLat: attendances.checkInLat,
+        checkInLng: attendances.checkInLng,
+        checkOutLat: attendances.checkOutLat,
+        checkOutLng: attendances.checkOutLng,
+        status: attendances.status,
+        overtimeHours: attendances.overtimeHours,
+        checkInPhotoUrl: attendances.checkInPhotoUrl,
+        notes: attendances.notes,
+        createdAt: attendances.createdAt,
+        locationName: workLocations.name,
+        locationAddress: workLocations.address,
+      })
+      .from(attendances)
+      .leftJoin(workLocations, eq(attendances.locationId, workLocations.id))
+      .where(and(...conditions))
+      .orderBy(desc(attendances.date));
+
+      const data = parsedLimit
+        ? await baseQuery.limit(parsedLimit).offset(offset!)
+        : await baseQuery;
+
+      return reply.send({
+        success: true,
+        data,
+        ...(parsedLimit ? {
+          pagination: {
+            page: parsedPage,
+            limit: parsedLimit,
+          }
+        } : {})
+      });
     } catch (error) {
       app.log.error(error);
       return reply.status(500).send({ success: false, error: 'Internal server error' });

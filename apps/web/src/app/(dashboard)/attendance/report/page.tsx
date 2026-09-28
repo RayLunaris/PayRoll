@@ -19,9 +19,11 @@ interface ReportRow {
 
 interface EmployeeItem {
   id: string;
-  employeeNumber: string;
-  firstName: string;
-  lastName: string;
+  nip?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  employeeNumber?: string;
 }
 
 const ALLOWED_ROLES = ['hr_admin', 'manager', 'super_admin'] as const;
@@ -51,11 +53,13 @@ export default function AttendanceReportPage() {
       return;
     }
     api
-      .get<{ data: EmployeeItem[] }>('/employees')
+      .get<{ data: EmployeeItem[] }>('/employees?page=1&limit=200')
       .then((res) => {
         const map: Record<string, string> = {};
         res.data.data.forEach((emp) => {
-          map[emp.id] = `${emp.firstName} ${emp.lastName} (${emp.employeeNumber})`;
+          const name = emp.fullName || [emp.firstName, emp.lastName].filter(Boolean).join(' ') || 'Karyawan';
+          const code = emp.nip || emp.employeeNumber;
+          map[emp.id] = code ? `${name} (${code})` : name;
         });
         setEmployeeMap(map);
       })
@@ -103,7 +107,7 @@ export default function AttendanceReportPage() {
       'Total Lembur (Jam)',
     ];
     const rows = report.map((r) => [
-      `"${(employeeMap[r.employeeId] || r.employeeName || 'Karyawan').replace(/"/g, '""')}"`,
+      `"${(employeeMap[r.employeeId] || r.employeeName || r.employeeId).replace(/"/g, '""')}"`,
       `"${r.employeeId}"`,
       r.totalDays,
       r.presentDays,
@@ -221,7 +225,7 @@ export default function AttendanceReportPage() {
                       <td>
                         <div className="flex items-center gap-2">
                           <UserCircle className="h-4 w-4 text-gray-400 shrink-0" />
-                          <span>{employeeMap[row.employeeId] ?? row.employeeName ?? row.employeeId}</span>
+                          <span>{employeeMap[row.employeeId] || row.employeeName || row.employeeId}</span>
                         </div>
                       </td>
                       <td>{row.totalDays}</td>

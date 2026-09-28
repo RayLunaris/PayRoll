@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, workLocations, eq, desc } from '@payrollpro/db';
+import { db, workLocations, eq, desc, getCached, invalidateCache } from '@payrollpro/db';
 import { requireRole } from '../middleware/auth.js';
 
 const locationSchema = z.object({
@@ -18,13 +18,28 @@ const validateLocationSchema = z.object({
 });
 
 export async function locationRoutes(app: FastifyInstance) {
-  // Get all locations
+  // Get all locations (cached)
   app.get('/', {
     preHandler: [app.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const data = await db.select().from(workLocations).orderBy(desc(workLocations.createdAt));
-      return reply.send({ success: true, data });
+      const { page, limit } = request.query as { page?: string; limit?: string };
+      const parsedLimit = limit ? Math.min(200, Math.max(1, parseInt(limit, 10))) : undefined;
+      const parsedPage = page ? Math.max(1, parseInt(page, 10)) : 1;
+      const offset = parsedLimit ? (parsedPage - 1) * parsedLimit : undefined;
+
+      const cacheKey = parsedLimit ? `master:locations:p${parsedPage}:l${parsedLimit}` : 'master:locations:all';
+
+      const data = await getCached(cacheKey, 600, async () => {
+        const query = db.select().from(workLocations).orderBy(desc(workLocations.createdAt));
+        return parsedLimit ? await query.limit(parsedLimit).offset(offset!) : await query;
+      });
+
+      return reply.send({
+        success: true,
+        data,
+        ...(parsedLimit ? { pagination: { page: parsedPage, limit: parsedLimit } } : {}),
+      });
     } catch (error) {
       app.log.error(error);
       return reply.status(500).send({ success: false, error: 'Internal server error' });
@@ -38,7 +53,7 @@ export async function locationRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const location = await db.select().from(workLocations).where(eq(workLocations.id, id)).limit(1);
-      
+
       if (location.length === 0) {
         return reply.status(404).send({ success: false, error: 'Location not found' });
       }
@@ -57,6 +72,7 @@ export async function locationRoutes(app: FastifyInstance) {
     try {
       const body = locationSchema.parse(request.body);
       const newLocation = await db.insert(workLocations).values(body).returning();
+      await invalidateCache('master:locations:*');
       return reply.status(201).send({ success: true, data: newLocation[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -75,11 +91,12 @@ export async function locationRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const body = locationSchema.partial().parse(request.body);
       const updated = await db.update(workLocations).set(body).where(eq(workLocations.id, id)).returning();
-      
+
       if (updated.length === 0) {
         return reply.status(404).send({ success: false, error: 'Location not found' });
       }
 
+      await invalidateCache('master:locations:*');
       return reply.send({ success: true, data: updated[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -97,11 +114,12 @@ export async function locationRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const deleted = await db.delete(workLocations).where(eq(workLocations.id, id)).returning();
-      
+
       if (deleted.length === 0) {
         return reply.status(404).send({ success: false, error: 'Location not found' });
       }
 
+      await invalidateCache('master:locations:*');
       return reply.send({ success: true, message: 'Location deleted' });
     } catch (error) {
       app.log.error(error);

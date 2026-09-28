@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, overtimeRates, eq, asc } from '@payrollpro/db';
+import { db, overtimeRates, eq, asc, invalidateCache } from '@payrollpro/db';
 
 const ADMIN_ROLES = ['hr_admin', 'super_admin'];
 
@@ -45,6 +45,7 @@ export async function overtimeRateRoutes(app: FastifyInstance) {
         dayType: body.dayType || null,
         isActive: body.isActive ?? true,
       }).returning();
+      await invalidateCache('master:overtime-rates:*');
       return reply.status(201).send({ success: true, data: created[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -67,6 +68,7 @@ export async function overtimeRateRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'Overtime rate not found' });
       }
 
+      await invalidateCache('master:overtime-rates:*');
       return reply.send({ success: true, data: updated[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -88,6 +90,7 @@ export async function overtimeRateRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'Overtime rate not found' });
       }
 
+      await invalidateCache('master:overtime-rates:*');
       return reply.send({ success: true, message: 'Overtime rate deleted' });
     } catch (error) {
       app.log.error(error);

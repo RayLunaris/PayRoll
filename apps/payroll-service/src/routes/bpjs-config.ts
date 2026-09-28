@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, bpjsConfig, eq, desc } from '@payrollpro/db';
+import { db, bpjsConfig, eq, desc, invalidateCache } from '@payrollpro/db';
 
 const ADMIN_ROLES = ['hr_admin', 'super_admin'];
 
@@ -54,6 +54,7 @@ export async function bpjsConfigRoutes(app: FastifyInstance) {
         employerRate: body.employerRate || '0',
         effectiveDate: '2024-01-01',
       }).returning();
+      await invalidateCache('master:bpjs-config:*');
       return reply.status(201).send({ success: true, data: created[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -76,6 +77,7 @@ export async function bpjsConfigRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'BPJS config not found' });
       }
 
+      await invalidateCache('master:bpjs-config:*');
       return reply.send({ success: true, data: updated[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -97,6 +99,7 @@ export async function bpjsConfigRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'BPJS config not found' });
       }
 
+      await invalidateCache('master:bpjs-config:*');
       return reply.send({ success: true, message: 'BPJS config deleted' });
     } catch (error) {
       app.log.error(error);

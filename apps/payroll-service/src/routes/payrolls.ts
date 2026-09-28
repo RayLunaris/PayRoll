@@ -107,10 +107,12 @@ export async function payrollRoutes(app: FastifyInstance) {
         return reply.status(403).send({ success: false, error: 'Forbidden: Insufficient privileges' });
       }
 
-      const { month, year, employeeId } = request.query as {
+      const { month, year, employeeId, page, limit } = request.query as {
         month?: string | number;
         year?: string | number;
         employeeId?: string;
+        page?: string | number;
+        limit?: string | number;
       };
 
       const conditions = [];
@@ -118,11 +120,23 @@ export async function payrollRoutes(app: FastifyInstance) {
       if (year) conditions.push(eq(payrolls.periodYear, parseInt(year.toString(), 10)));
       if (employeeId) conditions.push(eq(payrolls.employeeId, employeeId));
 
-      const data = conditions.length > 0
-        ? await db.select().from(payrolls).where(and(...conditions)).orderBy(desc(payrolls.createdAt))
-        : await db.select().from(payrolls).orderBy(desc(payrolls.createdAt));
+      const parsedLimit = limit ? Math.min(200, Math.max(1, parseInt(limit.toString(), 10))) : undefined;
+      const parsedPage = page ? Math.max(1, parseInt(page.toString(), 10)) : 1;
+      const offset = parsedLimit ? (parsedPage - 1) * parsedLimit : undefined;
 
-      return reply.send({ success: true, data });
+      const baseQuery = conditions.length > 0
+        ? db.select().from(payrolls).where(and(...conditions)).orderBy(desc(payrolls.createdAt))
+        : db.select().from(payrolls).orderBy(desc(payrolls.createdAt));
+
+      const data = parsedLimit
+        ? await baseQuery.limit(parsedLimit).offset(offset!)
+        : await baseQuery;
+
+      return reply.send({
+        success: true,
+        data,
+        ...(parsedLimit ? { pagination: { page: parsedPage, limit: parsedLimit } } : {}),
+      });
     } catch (error) {
       app.log.error(error);
       return reply.status(500).send({ success: false, error: 'Internal server error' });

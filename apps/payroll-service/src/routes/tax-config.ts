@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, taxConfig, eq, asc } from '@payrollpro/db';
+import { db, taxConfig, eq, asc, invalidateCache } from '@payrollpro/db';
 
 const ADMIN_ROLES = ['hr_admin', 'super_admin'];
 
@@ -54,6 +54,7 @@ export async function taxConfigRoutes(app: FastifyInstance) {
         fixedAmount: body.fixedAmount || '0',
         effectiveDate: '2024-01-01',
       }).returning();
+      await invalidateCache('master:tax-config:*');
       return reply.status(201).send({ success: true, data: created[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -76,6 +77,7 @@ export async function taxConfigRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'Tax config not found' });
       }
 
+      await invalidateCache('master:tax-config:*');
       return reply.send({ success: true, data: updated[0] });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -97,6 +99,7 @@ export async function taxConfigRoutes(app: FastifyInstance) {
         return reply.status(404).send({ success: false, error: 'Tax config not found' });
       }
 
+      await invalidateCache('master:tax-config:*');
       return reply.send({ success: true, message: 'Tax config deleted' });
     } catch (error) {
       app.log.error(error);

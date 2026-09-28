@@ -74,28 +74,31 @@ async function seed() {
   ]).onConflictDoNothing();
 
   // Seed Work Locations
-  await db.insert(workLocations).values([
-    {
-      name: 'Djavasoft',
-      address: 'Kepatihan, Kec. Tulungagung, Kabupaten Tulungagung, Jawa Timur 66223',
-      latitude: '-8.0618388',
-      longitude: '111.9119472',
-      radiusMeters: 100,
-    },
-    {
-      name: 'Bu RINA - Aneka Jajanan',
-      address: 'Balerejo, Kec. Kauman, Kabupaten Tulungagung, Jawa Timur 66215',
-      latitude: '-8.0612821',
-      longitude: '111.8738753',
-      radiusMeters: 100,
-    },
-  ]).onConflictDoNothing();
+  const existingLocations = await db.select().from(workLocations);
+  if (existingLocations.length === 0) {
+    await db.insert(workLocations).values([
+      {
+        name: 'Kantor 1',
+        address: 'Kepatihan, Kec. Tulungagung, Kabupaten Tulungagung, Jawa Timur 66223',
+        latitude: '-8.0618388',
+        longitude: '111.9119472',
+        radiusMeters: 100,
+      },
+      {
+        name: 'Kantor 2',
+        address: 'Balerejo, Kec. Kauman, Kabupaten Tulungagung, Jawa Timur 66215',
+        latitude: '-8.0612821',
+        longitude: '111.8738753',
+        radiusMeters: 100,
+      },
+    ]);
+  }
 
   // Seed Default Employee Profile for Super Admin
   const [adminUser] = await db.select().from(users).where(eq(users.email, 'admin@payrollpro.com')).limit(1);
   const [hrDept] = await db.select().from(departments).where(eq(departments.name, 'Human Resources')).limit(1);
   const [managerPos] = await db.select().from(positions).where(eq(positions.name, 'Manager')).limit(1);
-  const [headOffice] = await db.select().from(workLocations).where(eq(workLocations.name, 'Djavasoft')).limit(1);
+  const [headOffice] = await db.select().from(workLocations).where(eq(workLocations.name, 'Kantor 1')).limit(1);
 
   if (adminUser && hrDept && managerPos && headOffice) {
     const existingEmp = await db.select().from(employees).where(eq(employees.userId, adminUser.id)).limit(1);

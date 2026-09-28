@@ -1,4 +1,4 @@
-import { db, bpjsConfig, eq } from '@payrollpro/db';
+import { db, bpjsConfig, eq, getCached } from '@payrollpro/db';
 
 export interface BpjsCalculation {
   component: string;
@@ -11,7 +11,9 @@ export async function calculateBPJS(grossSalary: number): Promise<{
   totalEmployee: number;
   totalEmployer: number;
 }> {
-  const configs = await db.select().from(bpjsConfig).where(eq(bpjsConfig.isActive, true));
+  const configs = await getCached('master:bpjs-config:active', 600, () =>
+    db.select().from(bpjsConfig).where(eq(bpjsConfig.isActive, true))
+  );
 
   const detail: BpjsCalculation[] = [];
   let totalEmployee = 0;

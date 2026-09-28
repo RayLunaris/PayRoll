@@ -1,4 +1,4 @@
-import { pgTable, uuid, date, timestamp, decimal, varchar, text, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, date, timestamp, decimal, varchar, text, unique, index } from 'drizzle-orm/pg-core';
 import { employees } from './employees';
 import { workLocations } from './work-locations';
 
@@ -20,4 +20,6 @@ export const attendances = pgTable('attendances', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => ({
   uniqueEmployeeDate: unique('unique_employee_date').on(table.employeeId, table.date),
+  idxAttendancesDate: index('idx_attendances_date').on(table.date),
+  idxAttendancesLocation: index('idx_attendances_location').on(table.locationId),
 }));
