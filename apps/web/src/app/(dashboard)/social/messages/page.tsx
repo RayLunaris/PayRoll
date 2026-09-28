@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
+import { useNotificationStore } from '@/stores/notification';
 import {
   MessageCircle,
   Send,
@@ -125,6 +126,7 @@ export default function MessagesPage() {
     try {
       const response = await api.get<{ data: Conversation[] }>('/messages');
       setConversations(response.data.data || []);
+      void useNotificationStore.getState().fetchUnreadCounts();
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
     } finally {
@@ -145,6 +147,7 @@ export default function MessagesPage() {
     try {
       const response = await api.get<{ data: Message[] }>(`/messages/${userId}`);
       setMessages(response.data.data || []);
+      void useNotificationStore.getState().fetchUnreadCounts();
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     }

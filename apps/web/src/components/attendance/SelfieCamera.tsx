@@ -22,11 +22,27 @@ export default function SelfieCamera({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const isMountedRef = useRef(true);
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // ignore
+        }
+      });
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+        videoRef.current.load();
+      } catch {
+        // ignore
+      }
     }
     setIsCameraActive(false);
   }, []);
@@ -50,6 +66,12 @@ export default function SelfieCamera({
         audio: false,
       });
 
+      // Guard: if unmounted while getUserMedia prompt was pending, kill stream immediately
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -57,6 +79,7 @@ export default function SelfieCamera({
       }
       setIsCameraActive(true);
     } catch (err: unknown) {
+      if (!isMountedRef.current) return;
       const error = err as Error;
       console.warn('Camera access failed:', error);
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -68,13 +91,29 @@ export default function SelfieCamera({
       }
       stopStream();
     } finally {
-      setIsStarting(false);
+      if (isMountedRef.current) {
+        setIsStarting(false);
+      }
     }
   }, [stopStream]);
 
-  // Clean up media stream on unmount
+  // Clean up media stream on unmount and when app is hidden/backgrounded
   useEffect(() => {
+    isMountedRef.current = true;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        stopStream();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', stopStream);
+
     return () => {
+      isMountedRef.current = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', stopStream);
       stopStream();
     };
   }, [stopStream]);
@@ -96,6 +135,11 @@ export default function SelfieCamera({
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+    // Release canvas bitmap memory
+    canvas.width = 0;
+    canvas.height = 0;
+
     stopStream();
     onCapture(dataUrl);
   };

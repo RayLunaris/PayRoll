@@ -162,6 +162,7 @@ export async function notifyUsers({
           message,
           type,
           referenceId: referenceId || null,
+          actionUrl: actionUrl || null,
           isRead: false,
         }))
       )

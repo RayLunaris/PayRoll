@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { UserRole } from '@/types'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
 import { useState, useRef, useEffect } from 'react'
 import GlobalSearch from '@/components/layout/GlobalSearch'
 
@@ -25,8 +26,34 @@ export default function Header() {
   const router = useRouter()
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
+  const unreadNotificationsCount = useNotificationStore((state) => state.unreadNotificationsCount)
+  const unreadMessagesCount = useNotificationStore((state) => state.unreadMessagesCount)
+  const fetchUnreadCounts = useNotificationStore((state) => state.fetchUnreadCounts)
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!user) return
+
+    // Initial fetch
+    void fetchUnreadCounts()
+
+    // Periodic polling every 15 seconds
+    const interval = setInterval(() => {
+      void fetchUnreadCounts()
+    }, 15000)
+
+    // Refresh when user returns to window tab
+    const handleFocus = () => {
+      void fetchUnreadCounts()
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [user, fetchUnreadCounts])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -67,7 +94,11 @@ export default function Header() {
             className="relative rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100"
           >
             <MessageCircle className="h-5 w-5" />
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+            {unreadMessagesCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-sm animate-in fade-in">
+                {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+              </span>
+            )}
           </Link>
 
           {/* Notifications */}
@@ -78,7 +109,11 @@ export default function Header() {
             className="relative rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100"
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-sm animate-in fade-in">
+                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+              </span>
+            )}
           </Link>
 
           {/* User menu */}

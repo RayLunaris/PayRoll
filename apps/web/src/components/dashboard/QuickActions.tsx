@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import Link from 'next/link';
 import {
   CalendarCheck,
@@ -25,7 +26,7 @@ interface QuickActionItem {
   badge?: string;
 }
 
-export default function QuickActions() {
+export default memo(function QuickActions() {
   const user = useAuthStore((state) => state.user);
   const role = user?.role;
 
@@ -98,4 +99,4 @@ export default function QuickActions() {
       </div>
     </div>
   );
-}
+});

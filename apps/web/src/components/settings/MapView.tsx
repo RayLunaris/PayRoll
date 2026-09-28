@@ -2,6 +2,17 @@
 
 import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import 'leaflet/dist/leaflet.css';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let leafletPromise: Promise<any> | null = null;
+function getLeaflet() {
+  if (!leafletPromise) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    leafletPromise = import('leaflet').then((m) => (m as any).default || m);
+  }
+  return leafletPromise;
+}
 
 interface SettingsMapProps {
   lat: number;
@@ -25,7 +36,7 @@ function SettingsMapInner({ lat, lng, radius, onMove }: SettingsMapProps) {
     const initMap = async () => {
       if (!mapRef.current || mapInstanceRef.current) return;
 
-      const L = (await import('leaflet')).default;
+      const L = await getLeaflet();
       const center: [number, number] = [lat, lng];
 
       const map = L.map(mapRef.current).setView(center, 15);

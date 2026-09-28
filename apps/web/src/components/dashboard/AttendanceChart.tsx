@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -30,7 +30,7 @@ const DEFAULT_WEEK: DailyAttendanceStat[] = [
   { date: 'Min', fullDate: '', present: 0, late: 0, absent: 0 },
 ];
 
-export default function AttendanceChart() {
+export default memo(function AttendanceChart() {
   const [data, setData] = useState<DailyAttendanceStat[]>(DEFAULT_WEEK);
   const [loading, setLoading] = useState(true);
 
@@ -120,4 +120,4 @@ export default function AttendanceChart() {
       </div>
     </div>
   );
-}
+});

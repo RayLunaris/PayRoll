@@ -2,6 +2,17 @@
 
 import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import 'leaflet/dist/leaflet.css';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let leafletPromise: Promise<any> | null = null;
+function getLeaflet() {
+  if (!leafletPromise) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    leafletPromise = import('leaflet').then((m) => (m as any).default || m);
+  }
+  return leafletPromise;
+}
 
 interface MapViewProps {
   userLocation: { lat: number; lng: number } | null;
@@ -36,7 +47,7 @@ function MapViewInner({ userLocation, userAccuracy, workLocations }: MapViewProp
     const initMap = async () => {
       if (!mapRef.current || mapInstanceRef.current) return;
 
-      const L = (await import('leaflet')).default;
+      const L = await getLeaflet();
       if (!isMounted || !mapRef.current || mapInstanceRef.current) return;
 
       const start = userLocationRef.current;
@@ -88,7 +99,7 @@ function MapViewInner({ userLocation, userAccuracy, workLocations }: MapViewProp
     if (!map || !userLocation) return;
 
     const updateUserMarker = async () => {
-      const L = (await import('leaflet')).default;
+      const L = await getLeaflet();
       if (!mapInstanceRef.current) return;
 
       if (userMarkerRef.current) {
@@ -136,7 +147,7 @@ function MapViewInner({ userLocation, userAccuracy, workLocations }: MapViewProp
     if (!map || workLocations.length === 0 || locationsAddedRef.current) return;
 
     const addLocations = async () => {
-      const L = (await import('leaflet')).default;
+      const L = await getLeaflet();
       if (!mapInstanceRef.current || locationsAddedRef.current) return;
       locationsAddedRef.current = true;
 

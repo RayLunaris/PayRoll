@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import {
   LogIn,
   LogOut,
@@ -79,7 +79,7 @@ function formatActivityDate(dateString: string): string {
   }
 }
 
-export default function RecentActivity() {
+export default memo(function RecentActivity() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -181,4 +181,4 @@ export default function RecentActivity() {
       )}
     </div>
   );
-}
+});

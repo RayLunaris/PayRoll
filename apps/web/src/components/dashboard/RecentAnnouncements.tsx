@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import Link from 'next/link';
 import { Megaphone, AlertCircle, ArrowRight, Calendar, Sparkles } from 'lucide-react';
 import api from '@/lib/api';
@@ -20,7 +20,7 @@ function formatDate(dateStr?: string | Date): string {
   }
 }
 
-export default function RecentAnnouncements() {
+export default memo(function RecentAnnouncements() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -141,4 +141,4 @@ export default function RecentAnnouncements() {
       )}
     </div>
   );
-}
+});

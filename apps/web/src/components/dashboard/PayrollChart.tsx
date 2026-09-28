@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import {
   ResponsiveContainer,
   PieChart,
@@ -19,7 +19,7 @@ interface CompositionItem {
   value: number;
 }
 
-export default function PayrollChart() {
+export default memo(function PayrollChart() {
   const [data, setData] = useState<CompositionItem[]>([]);
   const [periodInfo, setPeriodInfo] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -106,4 +106,4 @@ export default function PayrollChart() {
       </div>
     </div>
   );
-}
+});

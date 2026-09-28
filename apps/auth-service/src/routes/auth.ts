@@ -10,6 +10,25 @@ import {
   positions,
   workLocations,
   passwordResetTokens,
+  notifications,
+  messages,
+  socialLikes,
+  socialComments,
+  socialPosts,
+  projectExpenses,
+  positionSalaryAuditLogs,
+  abuseLogs,
+  cashAdvances,
+  leaves,
+  leaveQuotas,
+  attendances,
+  employeeShifts,
+  shiftSwaps,
+  overtimeRequests,
+  projectMembers,
+  payrolls,
+  inArray,
+  sql,
   eq,
   or,
   desc,
@@ -687,6 +706,7 @@ export async function authRoutes(app: FastifyInstance) {
     try {
       const { id } = request.params as { id: string };
       const actor = request.user;
+      const isForce = (request.query as any)?.force === 'true' || (request.query as any)?.force === true;
 
       if (actor.id === id) {
         return reply.status(400).send({ success: false, error: 'Tidak dapat menghapus akun sendiri' });
@@ -698,13 +718,102 @@ export async function authRoutes(app: FastifyInstance) {
       }
 
       await revokeAllUserTokens(id);
-      await db.delete(employees).where(eq(employees.userId, id));
-      await db.delete(users).where(eq(users.id, id));
+
+      await db.transaction(async (tx) => {
+        // 1. Check if user is linked to an employee
+        const conditions = [eq(employees.userId, id)];
+        if (user.employeeId) {
+          conditions.push(eq(employees.id, user.employeeId));
+        }
+
+        const [linkedEmployee] = await tx
+          .select()
+          .from(employees)
+          .where(or(...conditions))
+          .limit(1);
+
+        if (linkedEmployee) {
+          // Check for payroll history
+          const [hasPayroll] = await tx
+            .select({ count: sql<string>`count(*)` })
+            .from(payrolls)
+            .where(eq(payrolls.employeeId, linkedEmployee.id));
+          const payrollCount = parseInt(hasPayroll?.count || '0', 10);
+
+          if (payrollCount > 0 && !isForce) {
+            throw new Error(
+              'PAYROLL_PROTECTED: Karyawan terhubung memiliki riwayat penggajian (payroll). Gunakan force=true atau ubah status menjadi Nonaktif.'
+            );
+          }
+
+          if (payrollCount > 0 && isForce) {
+            await tx.delete(payrolls).where(eq(payrolls.employeeId, linkedEmployee.id));
+          }
+
+          // Cascade employee-dependent records
+          await tx.delete(leaveQuotas).where(eq(leaveQuotas.employeeId, linkedEmployee.id));
+          await tx.delete(leaves).where(eq(leaves.employeeId, linkedEmployee.id));
+          await tx.delete(attendances).where(eq(attendances.employeeId, linkedEmployee.id));
+          await tx.delete(abuseLogs).where(eq(abuseLogs.employeeId, linkedEmployee.id));
+          await tx.delete(cashAdvances).where(eq(cashAdvances.employeeId, linkedEmployee.id));
+          await tx.delete(employeeShifts).where(eq(employeeShifts.employeeId, linkedEmployee.id));
+          await tx.delete(shiftSwaps).where(or(eq(shiftSwaps.requesterId, linkedEmployee.id), eq(shiftSwaps.targetId, linkedEmployee.id)));
+          await tx.delete(overtimeRequests).where(eq(overtimeRequests.employeeId, linkedEmployee.id));
+          await tx.delete(projectMembers).where(eq(projectMembers.employeeId, linkedEmployee.id));
+
+          // Unlink user from employee
+          await tx.update(users).set({ employeeId: null }).where(eq(users.id, id));
+
+          // Delete employee record
+          await tx.delete(employees).where(eq(employees.id, linkedEmployee.id));
+        }
+
+        // 2. Cascade user-dependent records
+        await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, id));
+        await tx.delete(notifications).where(eq(notifications.userId, id));
+        await tx.delete(messages).where(or(eq(messages.senderId, id), eq(messages.receiverId, id)));
+
+        // Clean up social posts, likes, and comments
+        const userPosts = await tx
+          .select({ id: socialPosts.id })
+          .from(socialPosts)
+          .where(eq(socialPosts.userId, id));
+        const postIds = userPosts.map((p) => p.id);
+
+        if (postIds.length > 0) {
+          await tx.delete(socialComments).where(inArray(socialComments.postId, postIds));
+          await tx.delete(socialLikes).where(inArray(socialLikes.postId, postIds));
+        }
+
+        await tx.delete(socialComments).where(eq(socialComments.userId, id));
+        await tx.delete(socialLikes).where(eq(socialLikes.userId, id));
+        await tx.delete(socialPosts).where(eq(socialPosts.userId, id));
+
+        // Nullify or clean up audit/approval fields referencing this user
+        await tx.delete(projectExpenses).where(eq(projectExpenses.submittedByUserId, id));
+        await tx.delete(positionSalaryAuditLogs).where(eq(positionSalaryAuditLogs.changedByUserId, id));
+        await tx.update(abuseLogs).set({ resolvedBy: null }).where(eq(abuseLogs.resolvedBy, id));
+        await tx.update(cashAdvances).set({ approvedBy: null }).where(eq(cashAdvances.approvedBy, id));
+        await tx.update(leaves).set({ approvedBy: null }).where(eq(leaves.approvedBy, id));
+        await tx.update(overtimeRequests).set({ approvedBy: null }).where(eq(overtimeRequests.approvedBy, id));
+        await tx.update(shiftSwaps).set({ decidedBy: null }).where(eq(shiftSwaps.decidedBy, id));
+
+        // 3. Delete user record
+        await tx.delete(users).where(eq(users.id, id));
+      });
 
       return reply.send({ success: true, message: 'User deleted' });
-    } catch (error) {
+    } catch (error: any) {
       app.log.error(error);
-      return reply.status(500).send({ success: false, error: 'Internal server error' });
+      if (error?.message?.startsWith('PAYROLL_PROTECTED:')) {
+        return reply.status(400).send({
+          success: false,
+          hasPayroll: true,
+          canForce: true,
+          error: error.message.replace('PAYROLL_PROTECTED: ', ''),
+        });
+      }
+      return reply.status(500).send({ success: false, error: error?.message || 'Internal server error' });
     }
   });
 }

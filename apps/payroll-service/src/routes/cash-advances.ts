@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, cashAdvances, employees, positions, eq, and, desc, inArray } from '@payrollpro/db';
+import { db, cashAdvances, employees, positions, eq, and, desc, inArray, notifyUsers, getUserIdByEmployeeId, getAdminAndManagerUserIds } from '@payrollpro/db';
 
 const cashAdvanceSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
@@ -122,6 +122,24 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
         year: currentYear,
         status: 'pending',
       }).returning();
+
+      // Notify admins and managers about new cash advance request
+      try {
+        const adminIds = await getAdminAndManagerUserIds({ employeeId: emp.id, excludeUserId: user.id });
+        if (adminIds.length > 0) {
+          const formattedAmount = `Rp ${Number(body.amount).toLocaleString('id-ID')}`;
+          await notifyUsers({
+            recipientUserIds: adminIds,
+            title: 'Pengajuan Kasbon Baru',
+            message: `${emp.fullName} mengajukan kasbon sebesar ${formattedAmount}.`,
+            type: 'cash_advance',
+            referenceId: newAdvance[0].id,
+            actionUrl: '/payroll/cash-advances',
+          });
+        }
+      } catch (notifErr) {
+        app.log.warn(notifErr, 'Failed to send cash advance submission notification');
+      }
 
       return reply.status(201).send({ success: true, data: newAdvance[0] });
     } catch (error) {
@@ -251,6 +269,29 @@ export async function cashAdvanceRoutes(app: FastifyInstance) {
         })
         .where(eq(cashAdvances.id, id))
         .returning();
+
+      // Notify the employee about the decision
+      try {
+        if (existing[0].employeeId) {
+          const targetUserId = await getUserIdByEmployeeId(existing[0].employeeId);
+          if (targetUserId) {
+            const isApproved = body.approved;
+            const formattedAmount = `Rp ${Number(existing[0].amount).toLocaleString('id-ID')}`;
+            await notifyUsers({
+              recipientUserIds: [targetUserId],
+              title: isApproved ? 'Pengajuan Kasbon Disetujui' : 'Pengajuan Kasbon Ditolak',
+              message: isApproved
+                ? `Pengajuan kasbon Anda sebesar ${formattedAmount} telah disetujui.`
+                : `Pengajuan kasbon Anda sebesar ${formattedAmount} telah ditolak.`,
+              type: 'cash_advance',
+              referenceId: id,
+              actionUrl: '/payroll/cash-advances',
+            });
+          }
+        }
+      } catch (notifErr) {
+        app.log.warn(notifErr, 'Failed to send cash advance approval notification');
+      }
 
       return reply.send({ success: true, data: updated[0] });
     } catch (error) {

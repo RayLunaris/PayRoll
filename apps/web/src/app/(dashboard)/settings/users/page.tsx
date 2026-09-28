@@ -112,15 +112,23 @@ export default function UserManagementPage() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Yakin ingin menghapus user ini? Aksi tidak dapat dibatalkan.')) return;
+  const handleDelete = async (id: string, force = false) => {
+    if (!force && !window.confirm('Yakin ingin menghapus user ini? Aksi tidak dapat dibatalkan.')) return;
 
     try {
-      await api.delete(`/auth/users/${id}`);
+      await api.delete(force ? `/auth/users/${id}?force=true` : `/auth/users/${id}`);
+      setMessage('User berhasil dihapus!');
       await fetchUsers();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      setMessage(error?.response?.data?.error || 'Gagal menghapus user');
+      const error = err as { response?: { data?: { error?: string; hasPayroll?: boolean; canForce?: boolean } } };
+      const resData = error?.response?.data;
+      if (resData?.hasPayroll && resData?.canForce) {
+        if (window.confirm(`${resData.error}\n\nApakah Anda ingin menghapus paksa user beserta data testing terkait?`)) {
+          await handleDelete(id, true);
+          return;
+        }
+      }
+      setMessage(resData?.error || 'Gagal menghapus user');
     }
   };
 

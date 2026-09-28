@@ -10,6 +10,7 @@ import { db, users, eq } from '@payrollpro/db';
 import { postRoutes } from './routes/posts.js';
 import { messageRoutes } from './routes/messages.js';
 import { announcementRoutes } from './routes/announcements.js';
+import { notificationRoutes } from './routes/notifications.js';
 import { randomUUID } from 'crypto';
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -75,6 +76,7 @@ export async function buildApp() {
   await app.register(postRoutes, { prefix: '/api/posts' });
   await app.register(messageRoutes, { prefix: '/api/messages' });
   await app.register(announcementRoutes, { prefix: '/api/announcements' });
+  await app.register(notificationRoutes, { prefix: '/api/notifications' });
 
   // File upload (PRD 9.8)
   app.post('/api/uploads', {

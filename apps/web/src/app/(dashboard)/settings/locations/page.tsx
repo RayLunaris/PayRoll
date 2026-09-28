@@ -1,12 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useAuthStore } from '@/stores/auth';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import MapView from '@/components/settings/MapView';
 import { MapPin, Plus, Pencil, Trash2, Save, Loader2, Target } from 'lucide-react';
+
+const MapView = dynamic(() => import('@/components/settings/MapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 w-full flex items-center justify-center bg-gray-100 rounded-lg border border-gray-200">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+    </div>
+  ),
+});
 
 interface WorkLocation {
   id: string;

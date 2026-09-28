@@ -16,8 +16,8 @@ export const socialPosts = pgTable('social_posts', {
 
 export const socialComments = pgTable('social_comments', {
   id: uuid('id').defaultRandom().primaryKey(),
-  postId: uuid('post_id').references(() => socialPosts.id),
-  userId: uuid('user_id').references(() => users.id),
+  postId: uuid('post_id').references(() => socialPosts.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 });
@@ -26,8 +26,8 @@ export const socialLikes = pgTable(
   'social_likes',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    postId: uuid('post_id').references(() => socialPosts.id),
-    userId: uuid('user_id').references(() => users.id),
+    postId: uuid('post_id').references(() => socialPosts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow(),
   },
   (table) => ({

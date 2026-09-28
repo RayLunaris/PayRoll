@@ -23,11 +23,14 @@ import {
   socialLikes,
   socialComments,
   socialPosts,
+  projectExpenses,
+  positionSalaryAuditLogs,
   eq,
   and,
   or,
   desc,
   sql,
+  inArray,
 } from '@payrollpro/db';
 import type { SQL } from '@payrollpro/db';
 import { requireRole } from '../middleware/auth.js';
@@ -418,9 +421,36 @@ export async function employeeRoutes(app: FastifyInstance) {
               await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, associatedUser.id));
               await tx.delete(notifications).where(eq(notifications.userId, associatedUser.id));
               await tx.delete(messages).where(or(eq(messages.senderId, associatedUser.id), eq(messages.receiverId, associatedUser.id)));
-              await tx.delete(socialLikes).where(eq(socialLikes.userId, associatedUser.id));
+
+              // 1. Delete comments and likes on posts authored by this user
+              const userPosts = await tx
+                .select({ id: socialPosts.id })
+                .from(socialPosts)
+                .where(eq(socialPosts.userId, associatedUser.id));
+              const postIds = userPosts.map((p) => p.id);
+
+              if (postIds.length > 0) {
+                await tx.delete(socialComments).where(inArray(socialComments.postId, postIds));
+                await tx.delete(socialLikes).where(inArray(socialLikes.postId, postIds));
+              }
+
+              // 2. Delete comments and likes created by this user on other posts
               await tx.delete(socialComments).where(eq(socialComments.userId, associatedUser.id));
+              await tx.delete(socialLikes).where(eq(socialLikes.userId, associatedUser.id));
+
+              // 3. Now delete user's posts
               await tx.delete(socialPosts).where(eq(socialPosts.userId, associatedUser.id));
+
+              // 4. Nullify or clean up audit/approval fields referencing this user
+              await tx.delete(projectExpenses).where(eq(projectExpenses.submittedByUserId, associatedUser.id));
+              await tx.delete(positionSalaryAuditLogs).where(eq(positionSalaryAuditLogs.changedByUserId, associatedUser.id));
+              await tx.update(abuseLogs).set({ resolvedBy: null }).where(eq(abuseLogs.resolvedBy, associatedUser.id));
+              await tx.update(cashAdvances).set({ approvedBy: null }).where(eq(cashAdvances.approvedBy, associatedUser.id));
+              await tx.update(leaves).set({ approvedBy: null }).where(eq(leaves.approvedBy, associatedUser.id));
+              await tx.update(overtimeRequests).set({ approvedBy: null }).where(eq(overtimeRequests.approvedBy, associatedUser.id));
+              await tx.update(shiftSwaps).set({ decidedBy: null }).where(eq(shiftSwaps.decidedBy, associatedUser.id));
+
+              // 5. Delete the user record
               await tx.delete(users).where(eq(users.id, associatedUser.id));
             } else {
               // If associated user is an admin or manager, only unlink employeeId

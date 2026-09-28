@@ -6,7 +6,7 @@ export default function Error({
   error,
   reset,
 }: {
-  error: Error
+  error: Error & { digest?: string }
   reset: () => void
 }) {
   useEffect(() => {
@@ -17,7 +17,7 @@ export default function Error({
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <div className="text-center">
         <h1 className="text-4xl font-bold text-gray-900">Terjadi Kesalahan</h1>
-        <p className="mt-4 text-gray-600">{error.message}</p>
+        <p className="mt-4 text-gray-600">{error.message || 'Terjadi kesalahan pada sistem.'}</p>
         <button onClick={reset} className="btn btn-primary mt-6">
           Coba Lagi
         </button>

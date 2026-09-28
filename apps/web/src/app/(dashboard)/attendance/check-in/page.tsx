@@ -1,11 +1,20 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import Breadcrumb from '@/components/layout/Breadcrumb';
-import MapView from '@/components/attendance/MapView';
 import SelfieCamera from '@/components/attendance/SelfieCamera';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
+
+const MapView = dynamic(() => import('@/components/attendance/MapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 w-full flex items-center justify-center bg-gray-100 rounded-lg border border-gray-200">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+    </div>
+  ),
+});
 import {
   MapPin,
   Navigation,
@@ -567,6 +576,9 @@ export default function CheckInPage() {
                       src={todayAttendance.checkInPhotoUrl}
                       alt="Selfie Check-in"
                       className="w-14 h-14 object-cover rounded-lg border border-gray-300 shadow-xs shrink-0"
+                      width={56}
+                      height={56}
+                      loading="lazy"
                     />
                     <div className="text-xs">
                       <p className="font-semibold text-gray-900">Foto Selfie Presensi</p>

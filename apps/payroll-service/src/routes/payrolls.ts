@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, payrolls, employees, eq, and, desc, inArray } from '@payrollpro/db';
+import { db, payrolls, employees, eq, and, desc, inArray, notifyUsers, getUserIdByEmployeeId } from '@payrollpro/db';
 import { processAllPayrolls, processEmployeePayroll } from '../services/payroll-processor.js';
 import { generatePayslip } from '../services/payslip.js';
 import type { PayrollResult } from '../services/payroll-processor.js';
@@ -22,6 +22,31 @@ export async function payrollRoutes(app: FastifyInstance) {
 
       const body = processSchema.parse(request.body);
       const results = await processAllPayrolls(body.month, body.year);
+
+      // Notify each processed employee
+      try {
+        const employeeIds = results.map((r) => r.employeeId);
+        if (employeeIds.length > 0) {
+          const emps = await db
+            .select({ id: employees.id, userId: employees.userId })
+            .from(employees)
+            .where(inArray(employees.id, employeeIds));
+
+          for (const emp of emps) {
+            if (emp.userId) {
+              await notifyUsers({
+                recipientUserIds: [emp.userId],
+                title: 'Slip Gaji Tersedia',
+                message: `Slip gaji periode ${body.month}/${body.year} Anda telah selesai diproses.`,
+                type: 'payroll',
+                actionUrl: '/payroll/slips',
+              });
+            }
+          }
+        }
+      } catch (notifErr) {
+        app.log.warn(notifErr, 'Failed to send bulk payroll notifications');
+      }
 
       return reply.status(201).send({
         success: true,
@@ -52,6 +77,22 @@ export async function payrollRoutes(app: FastifyInstance) {
 
       const body = processSchema.extend({ employeeId: z.string().uuid() }).parse(request.body);
       const result = await processEmployeePayroll(body.employeeId, body.month, body.year);
+
+      // Notify the single employee
+      try {
+        const targetUserId = await getUserIdByEmployeeId(body.employeeId);
+        if (targetUserId) {
+          await notifyUsers({
+            recipientUserIds: [targetUserId],
+            title: 'Slip Gaji Tersedia',
+            message: `Slip gaji periode ${body.month}/${body.year} Anda telah selesai diproses.`,
+            type: 'payroll',
+            actionUrl: '/payroll/slips',
+          });
+        }
+      } catch (notifErr) {
+        app.log.warn(notifErr, 'Failed to send single payroll notification');
+      }
 
       return reply.status(201).send({ success: true, data: result });
     } catch (error: any) {
@@ -227,6 +268,26 @@ export async function payrollRoutes(app: FastifyInstance) {
 
       if (updated.length === 0) {
         return reply.status(404).send({ success: false, error: 'Payroll not found' });
+      }
+
+      // Notify employee that salary has been paid
+      try {
+        if (updated[0].employeeId) {
+          const targetUserId = await getUserIdByEmployeeId(updated[0].employeeId);
+          if (targetUserId) {
+            const formattedSalary = `Rp ${Number(updated[0].netSalary).toLocaleString('id-ID')}`;
+            await notifyUsers({
+              recipientUserIds: [targetUserId],
+              title: 'Gaji Telah Dibayarkan',
+              message: `Gaji periode ${updated[0].periodMonth}/${updated[0].periodYear} sebesar ${formattedSalary} telah dibayarkan.`,
+              type: 'payroll',
+              referenceId: id,
+              actionUrl: '/payroll/slips',
+            });
+          }
+        }
+      } catch (notifErr) {
+        app.log.warn(notifErr, 'Failed to send payroll paid notification');
       }
 
       return reply.send({ success: true, data: updated[0] });

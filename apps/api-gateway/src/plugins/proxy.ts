@@ -17,6 +17,7 @@ export const SERVICES: ServiceConfig[] = [
   { name: 'posts', prefix: '/api/posts', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: true },
   { name: 'messages', prefix: '/api/messages', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: true },
   { name: 'announcements', prefix: '/api/announcements', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: true },
+  { name: 'notifications', prefix: '/api/notifications', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: true },
   { name: 'uploads', prefix: '/api/uploads', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: true },
   { name: 'social-static', prefix: '/uploads', url: process.env.SOCIAL_SERVICE_URL || 'http://localhost:3015', auth: false },
   { name: 'shifts', prefix: '/api/shifts', url: process.env.SHIFT_SERVICE_URL || 'http://localhost:3016', auth: true },
@@ -30,7 +31,6 @@ export async function registerProxy(app: FastifyInstance) {
       // Proxy request handler
       const handleProxy = async (request: FastifyRequest, reply: FastifyReply) => {
         const headers: Record<string, string> = {
-          'content-type': (request.headers['content-type'] as string) || 'application/json',
           'accept': (request.headers['accept'] as string) || 'application/json',
         };
 
@@ -56,11 +56,12 @@ export async function registerProxy(app: FastifyInstance) {
             signal: AbortSignal.timeout(10000),
           };
 
-          if (request.method !== 'GET' && request.method !== 'HEAD' && request.body !== undefined) {
+          if (request.method !== 'GET' && request.method !== 'HEAD' && request.body !== undefined && request.body !== null) {
             // Pass raw bytes through for multipart uploads; otherwise serialize JSON body
             fetchOptions.body = request.body instanceof Buffer
               ? request.body
               : (typeof request.body === 'string' ? request.body : JSON.stringify(request.body));
+            headers['content-type'] = (request.headers['content-type'] as string) || 'application/json';
           }
 
           const response = await fetch(targetUrl, fetchOptions);

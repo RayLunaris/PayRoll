@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
-import { Clock } from 'lucide-react';
+import { Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface AttendanceRecord {
   id: string;
@@ -64,6 +64,14 @@ export default function AttendanceHistoryPage() {
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
+
+  const totalPages = Math.max(1, Math.ceil(history.length / pageSize));
+  const paginatedHistory = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return history.slice(start, start + pageSize);
+  }, [history, page, pageSize]);
 
   // Initial load on mount using void IIFE so setState is never called
   // synchronously in the effect body (satisfies react-hooks/set-state-in-effect).
@@ -84,6 +92,7 @@ export default function AttendanceHistoryPage() {
   const handleFilter = async () => {
     setLoading(true);
     setError('');
+    setPage(1);
     try {
       const data = await loadAttendanceHistory(startDate, endDate);
       setHistory(data);
@@ -166,7 +175,7 @@ export default function AttendanceHistoryPage() {
                     </td>
                   </tr>
                 ) : (
-                  history.map((record) => (
+                  paginatedHistory.map((record) => (
                     <tr key={record.id}>
                       <td>{formatDate(record.date)}</td>
                       <td>
@@ -178,6 +187,9 @@ export default function AttendanceHistoryPage() {
                               alt="Selfie"
                               className="w-7 h-7 rounded-full object-cover border border-gray-300 shrink-0"
                               title="Foto Selfie Presensi"
+                              width={28}
+                              height={28}
+                              loading="lazy"
                             />
                           ) : (
                             <Clock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
@@ -205,6 +217,40 @@ export default function AttendanceHistoryPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {!loading && history.length > pageSize && (
+          <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
+            <span>
+              Menampilkan {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, history.length)} dari {history.length} catatan
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page === 1}
+                className="btn btn-secondary py-1 px-2.5 text-xs disabled:opacity-40"
+                aria-label="Halaman sebelumnya"
+              >
+                <ChevronLeft className="h-4 w-4 mr-0.5" />
+                Sebelumnya
+              </button>
+              <span className="px-2 font-medium text-gray-700">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={page === totalPages}
+                className="btn btn-secondary py-1 px-2.5 text-xs disabled:opacity-40"
+                aria-label="Halaman berikutnya"
+              >
+                Berikutnya
+                <ChevronRight className="h-4 w-4 ml-0.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>

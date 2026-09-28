@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
-import { FileText, Download, UserCircle } from 'lucide-react';
+import { FileText, Download, UserCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ReportRow {
   employeeId: string;
@@ -39,6 +39,14 @@ export default function AttendanceReportPage() {
   const [employeeMap, setEmployeeMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
+
+  const totalPages = Math.max(1, Math.ceil(report.length / pageSize));
+  const paginatedReport = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return report.slice(start, start + pageSize);
+  }, [report, page, pageSize]);
 
   // Guard: redirect non-authorised users
   useEffect(() => {
@@ -71,6 +79,7 @@ export default function AttendanceReportPage() {
   const fetchReport = useCallback(async () => {
     setLoading(true);
     setFetchError('');
+    setPage(1);
     try {
       const res = await api.get<{ data: ReportRow[] }>(
         `/attendance/report?month=${month}&year=${year}`,
@@ -220,7 +229,7 @@ export default function AttendanceReportPage() {
                     </td>
                   </tr>
                 ) : (
-                  report.map((row, index) => (
+                  paginatedReport.map((row, index) => (
                     <tr key={`${row.employeeId}-${index}`}>
                       <td>
                         <div className="flex items-center gap-2">
@@ -238,6 +247,40 @@ export default function AttendanceReportPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {!loading && report.length > pageSize && (
+          <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
+            <span>
+              Menampilkan {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, report.length)} dari {report.length} karyawan
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page === 1}
+                className="btn btn-secondary py-1 px-2.5 text-xs disabled:opacity-40"
+                aria-label="Halaman sebelumnya"
+              >
+                <ChevronLeft className="h-4 w-4 mr-0.5" />
+                Sebelumnya
+              </button>
+              <span className="px-2 font-medium text-gray-700">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={page === totalPages}
+                className="btn btn-secondary py-1 px-2.5 text-xs disabled:opacity-40"
+                aria-label="Halaman berikutnya"
+              >
+                Berikutnya
+                <ChevronRight className="h-4 w-4 ml-0.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>

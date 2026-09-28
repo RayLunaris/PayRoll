@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, messages, users, employees, departments, positions, eq, ne, and, or, asc, desc, inArray } from '@payrollpro/db';
+import { db, messages, users, employees, departments, positions, eq, ne, and, or, asc, desc, inArray, sql, notifyUsers } from '@payrollpro/db';
 import { publishEvent } from '../services/redis-publisher.js';
 
 const messageSchema = z.object({
@@ -47,6 +47,24 @@ export async function messageRoutes(app: FastifyInstance) {
           content: body.content,
           createdAt: newMessage.createdAt,
         },
+      });
+
+      // In-app notification saved to PostgreSQL notifications table & broadcast via Redis
+      const [senderEmp] = await db
+        .select({ fullName: employees.fullName })
+        .from(employees)
+        .where(eq(employees.userId, user.id))
+        .limit(1);
+      const senderName = senderEmp?.fullName || user.email.split('@')[0];
+      const preview = body.content.length > 70 ? `${body.content.slice(0, 70)}...` : body.content;
+
+      await notifyUsers({
+        recipientUserIds: [body.receiverId],
+        title: `Pesan baru dari ${senderName}`,
+        message: preview,
+        type: 'message',
+        referenceId: newMessage.id,
+        actionUrl: '/social/messages',
       });
 
       return reply.status(201).send({ success: true, data: newMessage });
@@ -214,7 +232,31 @@ export async function messageRoutes(app: FastifyInstance) {
     }
   });
 
-  // 4. Get conversation history with specific user (and mark incoming unread messages as read)
+  // 4. Get total unread messages count for current user (for header badge)
+  app.get('/unread-count', {
+    preHandler: [app.authenticate],
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user;
+      const [result] = await db
+        .select({ count: sql<string>`count(*)` })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.receiverId, user.id),
+            eq(messages.isRead, false)
+          )
+        );
+
+      const count = parseInt(result?.count || '0', 10);
+      return reply.send({ success: true, count });
+    } catch (error) {
+      app.log.error(error);
+      return reply.status(500).send({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // 5. Get conversation history with specific user (and mark incoming unread messages as read)
   app.get('/:userId', {
     preHandler: [app.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {

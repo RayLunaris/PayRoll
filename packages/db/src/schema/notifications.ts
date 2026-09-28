@@ -8,6 +8,7 @@ export const notifications = pgTable('notifications', {
   message: text('message').notNull(),
   type: varchar('type', { length: 30 }),
   referenceId: uuid('reference_id'),
+  actionUrl: varchar('action_url', { length: 255 }),
   isRead: boolean('is_read').default(false),
   createdAt: timestamp('created_at').defaultNow(),
 });
