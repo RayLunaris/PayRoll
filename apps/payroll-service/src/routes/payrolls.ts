@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { db, payrolls, employees, eq, and, desc, inArray, notifyUsers, getUserIdByEmployeeId } from '@payrollpro/db';
+import { db, payrolls, budgets, employees, eq, and, desc, inArray, notifyUsers, getUserIdByEmployeeId, sql } from '@payrollpro/db';
 import { processAllPayrolls, processEmployeePayroll } from '../services/payroll-processor.js';
 import { generatePayslip } from '../services/payslip.js';
 import type { PayrollResult } from '../services/payroll-processor.js';
@@ -406,6 +406,33 @@ export async function payrollRoutes(app: FastifyInstance) {
         totalNet += parseFloat(row.netSalary || '0');
       }
 
+      // Keep the dashboard composition tied to the same payroll budget records
+      // used by the payroll processor. Monthly and annual payroll allocations
+      // are both applicable to a selected period, matching the budget guardrail.
+      const applicableBudgets = await db
+        .select({ allocatedAmount: budgets.allocatedAmount, spentAmount: budgets.spentAmount })
+        .from(budgets)
+        .where(and(
+          eq(budgets.periodYear, y),
+          eq(budgets.category, 'payroll'),
+          eq(budgets.status, 'active'),
+          sql`(${budgets.periodMonth} is null or ${budgets.periodMonth} = ${m})`,
+        ));
+
+      const budgetAllocated = applicableBudgets.reduce(
+        (total, budget) => total + parseFloat(budget.allocatedAmount || '0'),
+        0,
+      );
+      const budgetRecordedSpent = applicableBudgets.reduce(
+        (total, budget) => total + parseFloat(budget.spentAmount || '0'),
+        0,
+      );
+      const budgetSpent = budgetRecordedSpent > 0 ? budgetRecordedSpent : totalNet;
+      const budgetRemaining = Math.max(0, budgetAllocated - budgetSpent);
+      const budgetUsagePercentage = budgetAllocated > 0
+        ? Math.round((budgetSpent / budgetAllocated) * 1000) / 10
+        : 0;
+
       return reply.send({
         success: true,
         data: {
@@ -413,6 +440,20 @@ export async function payrollRoutes(app: FastifyInstance) {
           periodYear: y,
           totalEmployees: records.length,
           totalAmount: Math.round(totalNet),
+          budget: {
+            hasBudget: applicableBudgets.length > 0,
+            allocatedAmount: Math.round(budgetAllocated),
+            spentAmount: Math.round(budgetSpent),
+            remainingAmount: Math.round(budgetRemaining),
+            usagePercentage: budgetUsagePercentage,
+            status: budgetAllocated === 0
+              ? 'unavailable'
+              : budgetUsagePercentage >= 100
+              ? 'exceeded'
+              : budgetUsagePercentage >= 80
+              ? 'warning'
+              : 'on_track',
+          },
           composition: [
             { name: 'Gaji Pokok', value: Math.round(totalBaseSalary) },
             { name: 'Lembur', value: Math.round(totalOvertime) },

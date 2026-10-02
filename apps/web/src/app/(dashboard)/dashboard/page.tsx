@@ -176,10 +176,10 @@ export default function DashboardPage() {
 
           {/* Admin Charts: Company Attendance & Payroll Composition */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <div className="lg:col-span-2 card">
+            <div className="lg:col-span-3 card">
               <AttendanceChart />
             </div>
-            <div className="card">
+            <div className="card lg:col-span-3">
               <PayrollChart />
             </div>
           </div>

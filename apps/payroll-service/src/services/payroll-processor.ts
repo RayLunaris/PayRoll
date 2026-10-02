@@ -41,6 +41,17 @@ export interface ProcessEmployeePayrollOptions {
   preloadedCashAdvances?: typeof cashAdvances.$inferSelect[];
 }
 
+/**
+ * Returns the amount that must be applied to the payroll budget when a
+ * payroll record is created or recalculated.
+ */
+export function calculateBudgetSpendDelta(
+  previousNetSalary: string | number | null | undefined,
+  currentNetSalary: number,
+): number {
+  return Math.round((currentNetSalary - parseFloat(String(previousNetSalary || '0'))) * 100) / 100;
+}
+
 // Process payroll for a single employee with transactional consistency and period lock
 export async function processEmployeePayroll(
   employeeId: string,
@@ -210,26 +221,38 @@ export async function processEmployeePayroll(
         }
       }
 
-      // Update payroll budget spent amount if an active payroll budget exists
-      const activeBudget = await tx
-        .select()
-        .from(budgets)
-        .where(
-          and(
-            eq(budgets.periodYear, year),
-            eq(budgets.category, 'payroll'),
-            eq(budgets.status, 'active'),
-            sql`(${budgets.periodMonth} is null or ${budgets.periodMonth} = ${month})`
-          )
-        )
-        .limit(1);
+    }
 
-      if (activeBudget.length > 0) {
-        const curSpent = parseFloat(activeBudget[0].spentAmount || '0');
+    // Update the applicable payroll budget by the net change, not by the full
+    // payroll amount. This keeps re-processing idempotent and lets a corrected
+    // payroll reduce the realization instead of leaving stale spending behind.
+    // A month-specific allocation takes precedence over an annual allocation.
+    const activeBudgets = await tx
+      .select()
+      .from(budgets)
+      .where(
+        and(
+          eq(budgets.periodYear, year),
+          eq(budgets.category, 'payroll'),
+          eq(budgets.status, 'active'),
+          sql`(${budgets.periodMonth} is null or ${budgets.periodMonth} = ${month})`,
+        ),
+      )
+      .orderBy(sql`case when ${budgets.periodMonth} = ${month} then 0 else 1 end`, sql`${budgets.createdAt} asc`)
+      .for('update');
+
+    if (activeBudgets.length > 0) {
+      const previousNetSalary = existing.length > 0 ? existing[0].netSalary : '0';
+      const spendDelta = calculateBudgetSpendDelta(previousNetSalary, netSalary);
+
+      if (spendDelta !== 0) {
         await tx
           .update(budgets)
-          .set({ spentAmount: (curSpent + netSalary).toFixed(2), updatedAt: new Date() })
-          .where(eq(budgets.id, activeBudget[0].id));
+          .set({
+            spentAmount: sql`greatest(0, ${budgets.spentAmount} + ${spendDelta.toFixed(2)})`,
+            updatedAt: new Date(),
+          })
+          .where(eq(budgets.id, activeBudgets[0].id));
       }
     }
 
