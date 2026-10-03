@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useAuthStore } from '@/stores/auth';
@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import Pattern from '@/components/ui/c-switch-6';
 import {
   Settings2,
   User,
@@ -39,6 +40,7 @@ import {
   Mail,
   Globe,
   SlidersHorizontal,
+  Smartphone,
 } from 'lucide-react';
 
 const roleLabels: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' }> = {
@@ -46,6 +48,16 @@ const roleLabels: Record<string, { label: string; variant: 'default' | 'secondar
   hr_admin: { label: 'HR Administrator', variant: 'default' },
   manager: { label: 'Manager / Supervisor', variant: 'secondary' },
   employee: { label: 'Karyawan', variant: 'outline' },
+};
+
+const notificationPreferencesKey = 'payrollpro-notification-preferences';
+
+type NotificationPreferences = {
+  emailPayslip: boolean;
+  emailLeave: boolean;
+  emailAttendance: boolean;
+  channel: 'email' | 'in_app' | 'both';
+  attendanceReminder: '15' | '30' | '60';
 };
 
 export default function SettingsPage() {
@@ -66,7 +78,32 @@ export default function SettingsPage() {
   const [emailPayslip, setEmailPayslip] = useState(true);
   const [emailLeave, setEmailLeave] = useState(true);
   const [emailAttendance, setEmailAttendance] = useState(true);
+  const [notificationChannel, setNotificationChannel] = useState<NotificationPreferences['channel']>('email');
+  const [attendanceReminder, setAttendanceReminder] = useState<NotificationPreferences['attendanceReminder']>('15');
   const [savedPrefs, setSavedPrefs] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(notificationPreferencesKey);
+      if (saved) {
+        const preferences = JSON.parse(saved) as Partial<NotificationPreferences>;
+        if (typeof preferences.emailPayslip === 'boolean') setEmailPayslip(preferences.emailPayslip);
+        if (typeof preferences.emailLeave === 'boolean') setEmailLeave(preferences.emailLeave);
+        if (typeof preferences.emailAttendance === 'boolean') setEmailAttendance(preferences.emailAttendance);
+        if (preferences.channel === 'email' || preferences.channel === 'in_app' || preferences.channel === 'both') {
+          setNotificationChannel(preferences.channel);
+        }
+        if (preferences.attendanceReminder === '15' || preferences.attendanceReminder === '30' || preferences.attendanceReminder === '60') {
+          setAttendanceReminder(preferences.attendanceReminder);
+        }
+      }
+    } catch {
+      // Preferensi tetap memakai nilai default jika penyimpanan perangkat tidak tersedia.
+    } finally {
+      setPrefsLoaded(true);
+    }
+  }, []);
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +144,15 @@ export default function SettingsPage() {
   };
 
   const handleSavePreferences = () => {
+    const preferences: NotificationPreferences = {
+      emailPayslip,
+      emailLeave,
+      emailAttendance,
+      channel: notificationChannel,
+      attendanceReminder,
+    };
+
+    window.localStorage.setItem(notificationPreferencesKey, JSON.stringify(preferences));
     setSavedPrefs(true);
     setTimeout(() => setSavedPrefs(false), 3000);
   };
@@ -263,52 +309,82 @@ export default function SettingsPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="divide-y divide-gray-100">
-                  <div className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">Email Pemberitahuan Slip Gaji</p>
-                      <p className="text-xs text-gray-500">Kirimkan salinan payslip otomatis saat penggajian dirilis</p>
+                <Pattern
+                  showCard={false}
+                  className="rounded-lg border border-gray-200"
+                  items={[
+                    {
+                      title: 'Email slip gaji',
+                      description: 'Kirim salinan slip gaji saat penggajian dirilis.',
+                      checked: emailPayslip,
+                      onCheckedChange: setEmailPayslip,
+                    },
+                    {
+                      title: 'Status cuti dan lembur',
+                      description: 'Beri tahu saat pengajuan disetujui atau ditolak.',
+                      checked: emailLeave,
+                      onCheckedChange: setEmailLeave,
+                    },
+                    {
+                      title: 'Pengingat jadwal dan absensi',
+                      description: 'Ingatkan sebelum batas toleransi check-in berakhir.',
+                      checked: emailAttendance,
+                      onCheckedChange: setEmailAttendance,
+                    },
+                  ]}
+                />
+
+                <div className="grid gap-4 border-t border-gray-100 pt-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label htmlFor="notification-channel" className="text-xs font-medium text-gray-700">
+                      Saluran pemberitahuan
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="notification-channel"
+                        value={notificationChannel}
+                        onChange={(e) => setNotificationChannel(e.target.value as NotificationPreferences['channel'])}
+                        className="h-10 w-full appearance-none rounded-md border border-gray-200 bg-white px-3 pr-8 text-sm text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="email">Email</option>
+                        <option value="in_app">Di dalam aplikasi</option>
+                        <option value="both">Email dan aplikasi</option>
+                      </select>
+                      <SlidersHorizontal className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-gray-400" />
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={emailPayslip}
-                      onChange={(e) => setEmailPayslip(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                    />
                   </div>
 
-                  <div className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">Status Pengajuan Cuti & Lembur</p>
-                      <p className="text-xs text-gray-500">Dapatkan alert persetujuan atau penolakan pengajuan</p>
+                  <div className="space-y-1.5">
+                    <label htmlFor="attendance-reminder" className="text-xs font-medium text-gray-700">
+                      Pengingat check-in
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="attendance-reminder"
+                        value={attendanceReminder}
+                        onChange={(e) => setAttendanceReminder(e.target.value as NotificationPreferences['attendanceReminder'])}
+                        disabled={!emailAttendance}
+                        className="h-10 w-full appearance-none rounded-md border border-gray-200 bg-white px-3 pr-8 text-sm text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        <option value="15">15 menit sebelum batas</option>
+                        <option value="30">30 menit sebelum batas</option>
+                        <option value="60">1 jam sebelum batas</option>
+                      </select>
+                      <Clock className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-gray-400" />
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={emailLeave}
-                      onChange={(e) => setEmailLeave(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">Pengingat Jadwal & Absensi</p>
-                      <p className="text-xs text-gray-500">Kirim pemberitahuan saat jam check-in mendekati batas toleransi</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={emailAttendance}
-                      onChange={(e) => setEmailAttendance(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                    />
                   </div>
                 </div>
               </CardContent>
               <CardFooter className="flex items-center justify-between bg-gray-50/50 rounded-b-xl border-t px-6 py-3">
-                <span className="text-xs text-gray-500">
-                  {savedPrefs ? 'Preferensi berhasil disimpan.' : 'Perubahan tersimpan secara lokal pada profil Anda.'}
+                <span className="flex items-center gap-1.5 text-xs text-gray-500" aria-live="polite">
+                  {savedPrefs ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Smartphone className="h-3.5 w-3.5" />}
+                  {savedPrefs
+                    ? 'Preferensi tersimpan di perangkat ini.'
+                    : prefsLoaded
+                      ? 'Perubahan belum tersimpan.'
+                      : 'Memuat preferensi...'}
                 </span>
-                <Button size="sm" onClick={handleSavePreferences} className="gap-1.5">
+                <Button size="sm" onClick={handleSavePreferences} className="gap-1.5" disabled={!prefsLoaded}>
                   <Save className="h-4 w-4" />
                   Simpan Preferensi
                 </Button>

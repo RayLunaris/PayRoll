@@ -71,12 +71,37 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    overflow-x: hidden;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  /* Leaflet controls use their own stacking layers. Hide them while the
+     mobile drawer is open so zoom buttons, attribution, and popups cannot
+     appear above the navigation surface. */
+  .mobile-nav-open .leaflet-control-container,
+  .mobile-nav-open .leaflet-popup-pane,
+  .mobile-nav-open .leaflet-tooltip-pane {
+    visibility: hidden;
+    pointer-events: none;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-primary {
@@ -96,11 +121,11 @@
   }
 
   .btn-sm {
-    @apply px-3 py-1.5 text-sm;
+    @apply min-h-11 px-3 py-1.5 text-sm sm:min-h-9;
   }
 
   .input {
-    @apply w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary;
+    @apply min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm;
   }
 
   .select {
@@ -157,5 +182,24 @@
 
   .badge-gray {
     @apply badge bg-gray-100 text-gray-800;
+  }
+}
+
+@layer utilities {
+  /* Existing screens use grid utilities extensively. Keep their desktop rhythm,
+     but make every non-calendar grid breathe on phone and tablet widths. */
+  @media (max-width: 639px) {
+    [class*="grid-cols-2"],
+    [class*="grid-cols-3"],
+    [class*="grid-cols-4"] {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    [class*="grid-cols-3"],
+    [class*="grid-cols-4"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
   }
 }

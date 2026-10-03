@@ -143,7 +143,7 @@ export default function DashboardPage() {
       {isAdmin && (
         <>
           {/* Admin Stat Cards: 4 cards company-wide */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6 mb-6">
             <StatCard
               title="Total Karyawan"
               value={loadingStats ? '...' : String(stats.totalEmployees)}
@@ -199,7 +199,7 @@ export default function DashboardPage() {
       {isManager && (
         <>
           {/* Manager Stat Cards: Exactly 3 cards scoped to team. (Total Karyawan is OMITTED) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6 mb-6">
             <StatCard
               title="Hadir Hari Ini"
               value={loadingStats ? '...' : String(stats.presentToday)}

@@ -79,7 +79,7 @@ export default memo(function QuickActions() {
           {isAdmin ? 'Akses Admin' : isManager ? 'Akses Manager' : 'Menu Mandiri'}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {actions.map((action) => {
           const Icon = action.icon;
           const styleClass = action.color ?? 'text-gray-700 bg-gray-50 hover:bg-blue-50 hover:text-blue-600';
@@ -87,7 +87,7 @@ export default memo(function QuickActions() {
             <Link
               key={action.label + action.href}
               href={action.href}
-              className={`flex flex-col items-center gap-2 p-3.5 rounded-xl transition-all ${styleClass}`}
+              className={`flex min-h-11 flex-col items-center justify-center gap-2 rounded-xl p-3.5 text-center transition-all ${styleClass}`}
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
               <span className="text-xs font-semibold text-center leading-tight">

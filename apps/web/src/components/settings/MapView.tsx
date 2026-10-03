@@ -107,7 +107,7 @@ function SettingsMapInner({ lat, lng, radius, onMove }: SettingsMapProps) {
 
   return (
     <div className="rounded-lg overflow-hidden border border-gray-200">
-      <div ref={mapRef} className="h-64 w-full" />
+      <div ref={mapRef} className="h-64 w-full md:h-96" />
     </div>
   );
 }
@@ -115,7 +115,7 @@ function SettingsMapInner({ lat, lng, radius, onMove }: SettingsMapProps) {
 export default dynamic(() => Promise.resolve(SettingsMapInner), {
   ssr: false,
   loading: () => (
-    <div className="h-64 w-full flex items-center justify-center bg-gray-100 rounded-lg">
+    <div className="h-64 w-full rounded-lg bg-gray-100 flex items-center justify-center md:h-96">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
     </div>
   ),

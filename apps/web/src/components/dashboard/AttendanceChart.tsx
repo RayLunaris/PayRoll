@@ -126,7 +126,7 @@ export default memo(function AttendanceChart() {
                 content={<ChartTooltipContent formatter={(value) => <><span className="text-gray-500">Karyawan</span><span className="ml-auto font-mono font-medium tabular-nums text-gray-900">{Number(value).toLocaleString('id-ID')}</span></>} />}
                 cursor={{ strokeDasharray: '3 3', stroke: '#9ca3af', strokeOpacity: 0.6 }}
               />
-              <Legend content={<ChartLegendContent />} />
+              <Legend content={<ChartLegendContent className="hidden sm:flex" />} />
               <Line type="monotone" dataKey="present" stroke={chartConfig.present.color} strokeWidth={3} dot={{ r: 3, fill: chartConfig.present.color, strokeWidth: 0 }} activeDot={{ r: 5 }} name="Hadir" />
               <Line type="monotone" dataKey="late" stroke={chartConfig.late.color} strokeWidth={2} dot={{ r: 3, fill: chartConfig.late.color, strokeWidth: 0 }} activeDot={{ r: 5 }} name="Terlambat" />
               <Line type="monotone" dataKey="absent" stroke={chartConfig.absent.color} strokeWidth={2} dot={{ r: 3, fill: chartConfig.absent.color, strokeWidth: 0 }} activeDot={{ r: 5 }} name="Absen" />

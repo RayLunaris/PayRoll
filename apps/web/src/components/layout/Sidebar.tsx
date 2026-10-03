@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -188,7 +188,7 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       <div className="flex justify-center mb-4">
         <div
           title={workspace}
-          className="w-9 h-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm shadow-sm"
+          className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm"
         >
           P
         </div>
@@ -200,26 +200,26 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     <div className="relative mb-3">
       <div
         onClick={() => canSwitch && setIsOpen(!isOpen)}
-        className={`flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors select-none group border border-border/40 bg-background/50 ${
-          canSwitch ? 'hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer' : ''
+        className={`flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors select-none group border border-slate-200 bg-white ${
+          canSwitch ? 'hover:bg-slate-50 cursor-pointer' : ''
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-[6px] bg-primary text-primary-foreground flex items-center justify-center font-bold text-[13px] shadow-sm shrink-0">
+          <div className="w-8 h-8 rounded-[6px] bg-blue-600 text-white flex items-center justify-center font-bold text-[13px] shadow-sm shrink-0">
             P
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-[13px] font-semibold leading-tight text-foreground truncate">
+            <span className="text-[13px] font-semibold leading-tight text-slate-800 truncate">
               {workspace}
             </span>
-            <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+            <span className="text-[11px] text-slate-500 leading-tight mt-0.5">
               Enterprise HRMS
             </span>
           </div>
         </div>
         {canSwitch && (
           <ChevronDown
-            className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground/80 transition-colors shrink-0 ml-1"
+            className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-colors shrink-0 ml-1"
             strokeWidth={1.5}
           />
         )}
@@ -228,7 +228,7 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       {canSwitch && isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-[48px] left-0 w-full bg-card border border-border/60 rounded-lg shadow-lg z-50 py-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100">
+          <div className="absolute top-[48px] left-0 w-full bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100">
             {workspaces.map((ws) => (
               <div
                 key={ws}
@@ -238,8 +238,8 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
                 }}
                 className={`px-3 py-2 mx-1 text-[13px] rounded-md cursor-pointer transition-colors flex items-center justify-between ${
                   workspace === ws
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-foreground/80 hover:bg-black/5 dark:hover:bg-white/5'
+                    ? 'bg-blue-50 text-blue-800 font-medium'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <span className="truncate">{ws}</span>
@@ -294,11 +294,11 @@ function NavItem({
         title={item.title}
         className={`flex items-center justify-center w-10 h-10 mx-auto rounded-lg transition-all duration-200 ${
           isItemActive
-            ? 'bg-primary text-primary-foreground font-medium shadow-sm'
-            : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground'
+            ? 'bg-blue-50 text-blue-800 font-medium'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
         }`}
       >
-        <item.icon className="w-5 h-5" strokeWidth={1.75} />
+        <item.icon className="w-[15px] h-[15px]" strokeWidth={1.75} />
       </Link>
     )
   }
@@ -307,11 +307,9 @@ function NavItem({
     <div className="flex flex-col w-full">
       <div
         className={`group flex items-center justify-between px-2.5 py-[7px] rounded-[6px] cursor-pointer transition-all duration-200 select-none ${
-          isItemActive && !hasChildren
-            ? 'bg-primary/10 text-primary font-semibold'
-            : isItemActive
-            ? 'text-foreground font-medium bg-black/5 dark:bg-white/5'
-            : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground'
+          isItemActive
+            ? 'bg-blue-50 text-blue-800 font-medium'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
         }`}
         style={{ paddingLeft: `${level * 12 + 10}px` }}
         onClick={() => {
@@ -331,9 +329,7 @@ function NavItem({
           className="flex items-center gap-2.5 min-w-0 flex-1"
         >
           <item.icon
-            className={`w-[16px] h-[16px] transition-colors shrink-0 ${
-              isItemActive ? 'text-primary' : 'text-muted-foreground/70 group-hover:text-foreground/80'
-            }`}
+            className="w-[15px] h-[15px] shrink-0"
             strokeWidth={1.75}
           />
           <span className="text-[13px] tracking-wide truncate">{item.title}</span>
@@ -341,18 +337,18 @@ function NavItem({
 
         <div className="flex items-center gap-2 shrink-0">
           {item.shortcut && (
-            <kbd className="hidden group-hover:inline-flex items-center justify-center h-5 px-1.5 text-[10px] font-medium font-mono text-muted-foreground/60 bg-background/50 border border-border/50 rounded-[4px]">
+          <kbd className="hidden group-hover:inline-flex items-center justify-center h-5 px-1.5 text-[10px] font-medium font-mono text-slate-500 bg-slate-100 border border-slate-200 rounded-[4px]">
               {item.shortcut}
             </kbd>
           )}
           {item.badge && (
-            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-primary/10 text-primary">
+            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-blue-100 text-blue-800">
               {item.badge}
             </span>
           )}
           {hasChildren && (
             <ChevronRight
-              className={`w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ${
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
                 isOpen ? 'rotate-90' : ''
               }`}
               strokeWidth={2}
@@ -369,7 +365,7 @@ function NavItem({
         >
           <div className="overflow-hidden min-h-0 relative flex flex-col gap-0.5 mt-0.5">
             <div
-              className="absolute top-0 bottom-0 border-l border-border/60"
+              className="absolute top-0 bottom-0 border-l border-slate-200"
               style={{ left: `${level * 12 + 18}px` }}
             />
             {visibleChildren.map((child) => {
@@ -380,8 +376,8 @@ function NavItem({
                   href={child.href}
                   className={`group flex items-center justify-between py-[6px] pr-2.5 rounded-[6px] cursor-pointer transition-all duration-150 select-none ${
                     isChildActive
-                      ? 'bg-primary/10 text-primary font-semibold'
-                      : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground'
+                      ? 'bg-blue-50 text-blue-800 font-medium'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                   style={{ paddingLeft: `${(level + 1) * 12 + 16}px` }}
                 >
@@ -396,13 +392,27 @@ function NavItem({
   )
 }
 
-export default function Sidebar() {
+export default function Sidebar({
+  mobileOpen = false,
+  onMobileClose,
+}: {
+  mobileOpen?: boolean
+  onMobileClose?: () => void
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
   const collapsed = useUIStore((state) => state.sidebarCollapsed)
   const toggleSidebar = useUIStore((state) => state.toggleSidebar)
+  const previousPathname = useRef(pathname)
+
+  useEffect(() => {
+    if (previousPathname.current !== pathname) {
+      onMobileClose?.()
+      previousPathname.current = pathname
+    }
+  }, [pathname, onMobileClose])
 
   const handleLogout = async () => {
     await logout()
@@ -410,10 +420,20 @@ export default function Sidebar() {
   }
 
   return (
-    <aside
-      className={`fixed left-0 top-0 z-40 h-screen bg-card border-r border-border/60 transition-all duration-300 flex flex-col ${
-        collapsed ? 'w-16 p-2' : 'w-64 p-3'
-      }`}
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Tutup menu navigasi"
+          className="fixed inset-0 z-[900] bg-slate-950/35 md:hidden"
+          onClick={onMobileClose}
+        />
+      )}
+      <aside
+      className={`fixed left-0 top-0 z-[1000] flex h-[100dvh] w-[min(86vw,16rem)] flex-col border-r border-slate-200 p-3 transition-transform duration-300 md:z-40 md:h-screen md:translate-x-0 md:transition-[width] ${
+        mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      } ${collapsed ? 'md:w-16 md:p-2' : 'md:w-64 md:p-3'}`}
+      style={{ backgroundColor: '#f8fafc' }}
     >
       {/* Top Header / Switcher & Collapse Button */}
       <div className="flex items-center justify-between pb-2 mb-1">
@@ -422,12 +442,12 @@ export default function Sidebar() {
         <button
           onClick={toggleSidebar}
           aria-label={collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'}
-          className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground transition-colors shrink-0"
+          className="flex h-11 w-11 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 md:h-9 md:w-9"
         >
           {collapsed ? (
-            <PanelLeftOpen className="w-4 h-4" strokeWidth={1.5} />
+            <PanelLeftOpen className="w-[15px] h-[15px]" strokeWidth={1.5} />
           ) : (
-            <PanelLeftClose className="w-4 h-4" strokeWidth={1.5} />
+            <PanelLeftClose className="w-[15px] h-[15px]" strokeWidth={1.5} />
           )}
         </button>
       </div>
@@ -437,7 +457,14 @@ export default function Sidebar() {
         {navGroups.map((group, idx) => (
           <div key={idx} className="flex flex-col gap-0.5">
             {group.heading && !collapsed && (
-              <span className="px-2.5 mb-1 text-[11px] font-semibold tracking-wider text-muted-foreground/60 uppercase">
+              <span
+                className="px-2.5 mb-1 tracking-wider uppercase font-normal select-none"
+                style={{
+                  fontSize: '10px',
+                  color: '#64748b',
+                  letterSpacing: '0.05em',
+                }}
+              >
                 {group.heading}
               </span>
             )}
@@ -455,22 +482,22 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom Nav Items */}
-      <div className="mt-auto pt-3 border-t border-border/60 flex flex-col gap-0.5">
+      <div className="mt-auto pt-3 border-t border-slate-200 flex flex-col gap-0.5">
         <Link
           href="/settings"
           title="Pengaturan"
           className={`group flex items-center justify-between px-2.5 py-[7px] rounded-[6px] cursor-pointer transition-all duration-200 select-none ${
             pathname.startsWith('/settings')
-              ? 'bg-primary/10 text-primary font-semibold'
-              : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground'
+              ? 'bg-blue-50 text-blue-800 font-medium'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
           } ${collapsed ? 'justify-center w-10 h-10 mx-auto px-0' : ''}`}
         >
           <div className="flex items-center gap-2.5">
-            <Settings className="w-[16px] h-[16px]" strokeWidth={1.75} />
+            <Settings className="w-[15px] h-[15px]" strokeWidth={1.75} />
             {!collapsed && <span className="text-[13px] tracking-wide">Pengaturan</span>}
           </div>
           {!collapsed && (
-            <kbd className="hidden group-hover:inline-flex items-center justify-center h-5 px-1.5 text-[10px] font-medium font-mono text-muted-foreground/60 bg-background/50 border border-border/50 rounded-[4px]">
+            <kbd className="hidden group-hover:inline-flex items-center justify-center h-5 px-1.5 text-[10px] font-medium font-mono text-slate-500 bg-slate-100 border border-slate-200 rounded-[4px]">
               ⌘,
             </kbd>
           )}
@@ -479,16 +506,18 @@ export default function Sidebar() {
         <button
           onClick={handleLogout}
           title="Keluar"
-          className={`group flex items-center justify-between px-2.5 py-[7px] rounded-[6px] cursor-pointer transition-all duration-200 select-none text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 ${
+          style={{ color: '#dc2626' }}
+          className={`group flex items-center justify-between px-2.5 py-[7px] rounded-[6px] cursor-pointer transition-all duration-200 select-none hover:bg-red-50 ${
             collapsed ? 'justify-center w-10 h-10 mx-auto px-0' : ''
           }`}
         >
           <div className="flex items-center gap-2.5">
-            <LogOut className="w-[16px] h-[16px]" strokeWidth={1.75} />
+            <LogOut className="w-[15px] h-[15px]" strokeWidth={1.75} />
             {!collapsed && <span className="text-[13px] tracking-wide">Keluar</span>}
           </div>
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

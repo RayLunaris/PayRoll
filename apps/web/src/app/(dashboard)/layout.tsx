@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useState } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
 import ToastContainer from '@/components/ui/ToastContainer'
@@ -13,6 +14,8 @@ export default function DashboardLayout({
 }) {
   const { isLoading, isAuthenticated } = useRequireAuth()
   const collapsed = useUIStore((state) => state.sidebarCollapsed)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const closeMobileNav = useCallback(() => setMobileNavOpen(false), [])
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -23,11 +26,11 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <div className={`transition-all duration-300 ${collapsed ? 'pl-16' : 'pl-64'}`}>
-        <Header />
-        <main className="p-6">{children}</main>
+    <div className={`min-h-screen bg-gray-50 ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
+      <Sidebar mobileOpen={mobileNavOpen} onMobileClose={closeMobileNav} />
+      <div className={`min-w-0 transition-all duration-300 ${collapsed ? 'md:pl-16' : 'md:pl-64'}`}>
+        <Header onMobileMenu={() => setMobileNavOpen(true)} />
+        <main className="min-w-0 overflow-x-clip p-4 pb-8 sm:p-6">{children}</main>
       </div>
       <ToastContainer />
     </div>
