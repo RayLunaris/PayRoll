@@ -4,7 +4,7 @@ import { users } from './users';
 
 export const shifts = pgTable('shifts', {
   id: uuid('id').defaultRandom().primaryKey(),
-  name: varchar('name', { length: 50 }).notNull(),
+  name: varchar('name', { length: 50 }).notNull().unique(),
   startTime: time('start_time').notNull(),
   endTime: time('end_time').notNull(),
   createdAt: timestamp('created_at').defaultNow(),

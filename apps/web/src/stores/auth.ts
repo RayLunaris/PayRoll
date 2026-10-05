@@ -113,7 +113,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       // auth-service rotates+revokes on every /auth/refresh, leaving the loser
       // of a concurrent race with a revoked cookie and a 401 "Session refresh
       // failed" that breaks every dashboard fetch on cold page loads.
-      let restored: { accessToken: string; refreshToken: string }
+      let restored: Awaited<ReturnType<typeof refreshServerSession>>
       try {
         restored = await refreshServerSession()
       } catch {
@@ -128,6 +128,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         restoreAttempted: true,
       })
       accessToken = restored.accessToken
+
+      // The refresh response already contains the verified active user. Avoid
+      // a second sequential /auth/me request on every full page refresh.
+      if (restored.user) {
+        set({ user: restored.user, isLoading: false })
+        return
+      }
     }
 
     set({ isLoading: true })

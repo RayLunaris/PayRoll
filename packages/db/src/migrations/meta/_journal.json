@@ -29,6 +29,13 @@
       "when": 1790170282160,
       "tag": "0003_confused_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790941365750,
+      "tag": "0004_burly_the_executioner",
+      "breakpoints": true
     }
   ]
 }

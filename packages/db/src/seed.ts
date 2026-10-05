@@ -21,20 +21,22 @@ async function seed() {
   }).onConflictDoNothing();
 
   // Seed Departments
-  await db.insert(departments).values([
-    {
-      name: 'Human Resources',
-      description: 'HR Department',
-    },
-    {
-      name: 'Information Technology',
-      description: 'IT Department',
-    },
-    {
-      name: 'Finance',
-      description: 'Finance Department',
-    },
-  ]).onConflictDoNothing();
+  const departmentSeeds = [
+    { name: 'Human Resources', description: 'HR Department' },
+    { name: 'Information Technology', description: 'IT Department' },
+    { name: 'Finance', description: 'Finance Department' },
+  ];
+  for (const department of departmentSeeds) {
+    const existingDepartment = await db
+      .select({ id: departments.id })
+      .from(departments)
+      .where(eq(departments.name, department.name))
+      .limit(1);
+
+    if (existingDepartment.length === 0) {
+      await db.insert(departments).values(department);
+    }
+  }
 
   // Seed Positions
   await db.insert(positions).values([
@@ -71,7 +73,7 @@ async function seed() {
       levelRank: 1,
       grade: 'Grade 1',
     },
-  ]).onConflictDoNothing();
+  ]).onConflictDoNothing({ target: positions.code });
 
   // Seed Work Locations
   const existingLocations = await db.select().from(workLocations);
@@ -124,32 +126,41 @@ async function seed() {
     { name: 'Pagi', startTime: '08:00', endTime: '16:00' },
     { name: 'Siang', startTime: '12:00', endTime: '20:00' },
     { name: 'Malam', startTime: '20:00', endTime: '04:00' },
-  ]).onConflictDoNothing();
+  ]).onConflictDoNothing({ target: shifts.name });
 
   // Seed BPJS Config
-  await db.insert(bpjsConfig).values([
-    { component: 'JKK', employeeRate: '0', employerRate: '0.24', effectiveDate: '2024-01-01' },
-    { component: 'JKM', employeeRate: '0', employerRate: '0.30', effectiveDate: '2024-01-01' },
-    { component: 'JP', employeeRate: '2', employerRate: '3.70', maxSalaryCap: '12000000', effectiveDate: '2024-01-01' },
-    { component: 'JHT', employeeRate: '2', employerRate: '3.70', effectiveDate: '2024-01-01' },
-    { component: 'BPJS_KES', employeeRate: '1', employerRate: '4', effectiveDate: '2024-01-01' },
-  ]).onConflictDoNothing();
+  const existingBpjs = await db.select().from(bpjsConfig);
+  if (existingBpjs.length === 0) {
+    await db.insert(bpjsConfig).values([
+      { component: 'JKK', employeeRate: '0', employerRate: '0.24', effectiveDate: '2024-01-01' },
+      { component: 'JKM', employeeRate: '0', employerRate: '0.30', effectiveDate: '2024-01-01' },
+      { component: 'JP', employeeRate: '2', employerRate: '3.70', maxSalaryCap: '12000000', effectiveDate: '2024-01-01' },
+      { component: 'JHT', employeeRate: '2', employerRate: '3.70', effectiveDate: '2024-01-01' },
+      { component: 'BPJS_KES', employeeRate: '1', employerRate: '4', effectiveDate: '2024-01-01' },
+    ]);
+  }
 
   // Seed Tax Config (PPh 21 2024)
-  await db.insert(taxConfig).values([
-    { bracketFrom: '0', bracketTo: '60000000', rate: '5', fixedAmount: '0', effectiveDate: '2024-01-01' },
-    { bracketFrom: '60000000', bracketTo: '250000000', rate: '15', fixedAmount: '3000000', effectiveDate: '2024-01-01' },
-    { bracketFrom: '250000000', bracketTo: '500000000', rate: '25', fixedAmount: '31500000', effectiveDate: '2024-01-01' },
-    { bracketFrom: '500000000', bracketTo: '5000000000', rate: '30', fixedAmount: '106500000', effectiveDate: '2024-01-01' },
-    { bracketFrom: '5000000000', bracketTo: null, rate: '35', fixedAmount: '1606500000', effectiveDate: '2024-01-01' },
-  ]).onConflictDoNothing();
+  const existingTax = await db.select().from(taxConfig);
+  if (existingTax.length === 0) {
+    await db.insert(taxConfig).values([
+      { bracketFrom: '0', bracketTo: '60000000', rate: '5', fixedAmount: '0', effectiveDate: '2024-01-01' },
+      { bracketFrom: '60000000', bracketTo: '250000000', rate: '15', fixedAmount: '3000000', effectiveDate: '2024-01-01' },
+      { bracketFrom: '250000000', bracketTo: '500000000', rate: '25', fixedAmount: '31500000', effectiveDate: '2024-01-01' },
+      { bracketFrom: '500000000', bracketTo: '5000000000', rate: '30', fixedAmount: '106500000', effectiveDate: '2024-01-01' },
+      { bracketFrom: '5000000000', bracketTo: null, rate: '35', fixedAmount: '1606500000', effectiveDate: '2024-01-01' },
+    ]);
+  }
 
   // Seed Overtime Rates
-  await db.insert(overtimeRates).values([
-    { name: 'Weekday', multiplier: '1.5', dayType: 'weekday' },
-    { name: 'Weekend', multiplier: '2.0', dayType: 'weekend' },
-    { name: 'Holiday', multiplier: '3.0', dayType: 'holiday' },
-  ]).onConflictDoNothing();
+  const existingOt = await db.select().from(overtimeRates);
+  if (existingOt.length === 0) {
+    await db.insert(overtimeRates).values([
+      { name: 'Weekday', multiplier: '1.5', dayType: 'weekday' },
+      { name: 'Weekend', multiplier: '2.0', dayType: 'weekend' },
+      { name: 'Holiday', multiplier: '3.0', dayType: 'holiday' },
+    ]);
+  }
 
   console.log('Seed completed!');
   await client.end();

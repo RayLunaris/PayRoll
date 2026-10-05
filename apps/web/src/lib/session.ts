@@ -12,9 +12,12 @@
 // request is ever in flight; concurrent callers await the same promise and all
 // receive the same (already-rotated) tokens without re-using the old cookie.
 
-let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null
+import type { User } from '@/types'
 
-export function refreshServerSession(): Promise<{ accessToken: string; refreshToken: string }> {
+type RefreshedSession = { accessToken: string; refreshToken: string; user?: User }
+let refreshPromise: Promise<RefreshedSession> | null = null
+
+export function refreshServerSession(): Promise<RefreshedSession> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const res = await fetch('/api/auth/refresh', { method: 'POST' })
@@ -28,6 +31,13 @@ export function refreshServerSession(): Promise<{ accessToken: string; refreshTo
       return {
         accessToken: json.data.accessToken,
         refreshToken: json.data.refreshToken,
+        user: json.data.user
+          ? {
+              ...json.data.user,
+              createdAt: new Date(json.data.user.createdAt || Date.now()),
+              updatedAt: new Date(json.data.user.updatedAt || Date.now()),
+            }
+          : undefined,
       }
     })().finally(() => {
       refreshPromise = null

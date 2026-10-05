@@ -49,42 +49,60 @@ export async function registerProxy(app: FastifyInstance) {
 
         const targetUrl = `${service.url}${request.url}`;
 
-        try {
-          const fetchOptions: RequestInit = {
-            method: request.method,
-            headers,
-            signal: AbortSignal.timeout(10000),
-          };
+        const maxRetries = 2;
+        let lastError: any = null;
 
-          if (request.method !== 'GET' && request.method !== 'HEAD' && request.body !== undefined && request.body !== null) {
-            // Pass raw bytes through for multipart uploads; otherwise serialize JSON body
-            fetchOptions.body = request.body instanceof Buffer
-              ? request.body
-              : (typeof request.body === 'string' ? request.body : JSON.stringify(request.body));
-            headers['content-type'] = (request.headers['content-type'] as string) || 'application/json';
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            const fetchOptions: RequestInit = {
+              method: request.method,
+              headers,
+              signal: AbortSignal.timeout(10000),
+            };
+
+            if (request.method !== 'GET' && request.method !== 'HEAD' && request.body !== undefined && request.body !== null) {
+              // Pass raw bytes through for multipart uploads; otherwise serialize JSON body
+              fetchOptions.body = request.body instanceof Buffer
+                ? request.body
+                : (typeof request.body === 'string' ? request.body : JSON.stringify(request.body));
+              headers['content-type'] = (request.headers['content-type'] as string) || 'application/json';
+            }
+
+            const response = await fetch(targetUrl, fetchOptions);
+
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              const data = await response.json();
+              return reply.status(response.status).send(data);
+            } else {
+              // Binary/static content: pass through raw bytes
+              const buffer = Buffer.from(await response.arrayBuffer());
+              return reply.status(response.status).type(contentType || 'application/octet-stream').send(buffer);
+            }
+          } catch (error: any) {
+            lastError = error;
+            // Retry if downstream connection is refused or momentarily dropping during boot/reload
+            const isConnError =
+              error?.cause?.code === 'ECONNREFUSED' ||
+              error?.code === 'ECONNREFUSED' ||
+              error?.message?.includes('fetch failed');
+
+            if (isConnError && attempt < maxRetries) {
+              await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+              continue;
+            }
+            break;
           }
-
-          const response = await fetch(targetUrl, fetchOptions);
-
-          const contentType = response.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const data = await response.json();
-            return reply.status(response.status).send(data);
-          } else {
-            // Binary/static content: pass through raw bytes
-            const buffer = Buffer.from(await response.arrayBuffer());
-            return reply.status(response.status).type(contentType || 'application/octet-stream').send(buffer);
-          }
-        } catch (error: any) {
-          request.log.error({ error, targetUrl, service: service.name }, 'Downstream proxy error');
-          return reply.status(502).send({
-            success: false,
-            statusCode: 502,
-            error: 'BadGateway',
-            message: `Service [${service.name}] is unreachable or encountered a network error`,
-            timestamp: new Date().toISOString(),
-          });
         }
+
+        request.log.error({ error: lastError, targetUrl, service: service.name }, 'Downstream proxy error');
+        return reply.status(502).send({
+          success: false,
+          statusCode: 502,
+          error: 'BadGateway',
+          message: `Service [${service.name}] is unreachable or encountered a network error`,
+          timestamp: new Date().toISOString(),
+        });
       };
 
       const preHandler = service.auth ? [app.authenticate] : [];

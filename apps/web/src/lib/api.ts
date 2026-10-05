@@ -107,6 +107,8 @@ api.interceptors.response.use(
         toast.warning('Terlalu banyak permintaan (Rate limit). Silakan tunggu sebentar.')
       } else if (isMutation && status >= 400 && status < 500 && errorMsg) {
         toast.error(errorMsg)
+      } else if (status === 502) {
+        toast.error('Layanan backend sedang bersiap atau memuat ulang. Silakan coba beberapa saat lagi.')
       } else if (isMutation && status >= 500) {
         toast.error('Terjadi kesalahan pada server. Silakan coba lagi nanti.')
       }

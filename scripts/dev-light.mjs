@@ -26,70 +26,70 @@ const SERVICES = {
     filter: '@payrollpro/api-gateway',
     color: '\x1b[36m', // Cyan
     port: 3001,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   auth: {
     name: 'auth-service',
     filter: '@payrollpro/auth-service',
     color: '\x1b[32m', // Green
     port: 3010,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   employee: {
     name: 'employee-service',
     filter: '@payrollpro/employee-service',
     color: '\x1b[33m', // Yellow
     port: 3011,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   payroll: {
     name: 'payroll-service',
     filter: '@payrollpro/payroll-service',
     color: '\x1b[34m', // Blue
     port: 3012,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   attendance: {
     name: 'attendance-service',
     filter: '@payrollpro/attendance-service',
     color: '\x1b[35m', // Magenta
     port: 3013,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   leave: {
     name: 'leave-service',
     filter: '@payrollpro/leave-service',
     color: '\x1b[90m', // Gray
     port: 3014,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   social: {
     name: 'social-service',
     filter: '@payrollpro/social-service',
     color: '\x1b[94m', // Bright Blue
     port: 3015,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   shift: {
     name: 'shift-service',
     filter: '@payrollpro/shift-service',
     color: '\x1b[93m', // Bright Yellow
     port: 3016,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   ws: {
     name: 'websocket',
     filter: '@payrollpro/websocket',
     color: '\x1b[96m', // Bright Cyan
     port: 3002,
-    maxMemory: 160,
+    maxMemory: 256,
   },
   web: {
     name: 'web (Next.js)',
     filter: '@payrollpro/web',
     color: '\x1b[95m', // Bright Magenta
     port: 3000,
-    maxMemory: 512,
+    maxMemory: 768,
   },
 };
 
@@ -134,6 +134,7 @@ const PRESETS = {
 const RESET_COLOR = '\x1b[0m';
 const BOLD = '\x1b[1m';
 const childProcesses = [];
+let isShuttingDown = false;
 
 function ensureDockerServices() {
   console.log(`${BOLD}[System] Memastikan PostgreSQL & Redis berjalan...${RESET_COLOR}`);
@@ -148,12 +149,13 @@ function ensureDockerServices() {
 }
 
 function cleanup() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   if (childProcesses.length === 0) return;
   console.log(`\n${BOLD}[System] Menghentikan semua service...${RESET_COLOR}`);
   for (const cp of childProcesses) {
     try {
       if (cp.pid) {
-        // Kill process tree
         process.kill(-cp.pid, 'SIGINT');
       }
     } catch (_) {
@@ -169,7 +171,63 @@ process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 process.on('exit', cleanup);
 
-function startServices(selectedKeys) {
+function spawnSingleService(key, restartCount = 0) {
+  const s = SERVICES[key];
+  if (!s) return;
+  const prefix = `${s.color}[${s.name}]${RESET_COLOR} `;
+
+  const child = spawn('pnpm', ['--filter', s.filter, 'dev'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: true,
+    env: {
+      ...process.env,
+      NODE_OPTIONS: `--max-old-space-size=${s.maxMemory}`,
+    },
+  });
+
+  childProcesses.push(child);
+
+  const pipeOutput = (stream, isError = false) => {
+    let buffer = '';
+    stream.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.trim().length > 0) {
+          const outStream = isError ? process.stderr : process.stdout;
+          outStream.write(`${prefix}${line}\n`);
+        }
+      }
+    });
+  };
+
+  pipeOutput(child.stdout, false);
+  pipeOutput(child.stderr, true);
+
+  child.on('error', (err) => {
+    console.error(`${prefix}\x1b[31mError: ${err.message}${RESET_COLOR}`);
+  });
+
+  child.on('close', (code) => {
+    const idx = childProcesses.indexOf(child);
+    if (idx !== -1) childProcesses.splice(idx, 1);
+
+    if (!isShuttingDown && code !== 0 && code !== null) {
+      console.log(`${prefix}\x1b[31mBerhenti dengan exit code ${code}.${RESET_COLOR}`);
+      if (restartCount < 3) {
+        console.log(`${prefix}\x1b[33mMemulai ulang service dalam 1 detik (percobaan ${restartCount + 1}/3)...${RESET_COLOR}`);
+        setTimeout(() => {
+          if (!isShuttingDown) {
+            spawnSingleService(key, restartCount + 1);
+          }
+        }, 1000);
+      }
+    }
+  });
+}
+
+async function startServices(selectedKeys) {
   ensureDockerServices();
 
   const uniqueKeys = [...new Set(selectedKeys)].filter((k) => SERVICES[k]);
@@ -177,6 +235,14 @@ function startServices(selectedKeys) {
     console.error('Tidak ada service valid yang dipilih.');
     process.exit(1);
   }
+
+  // Prioritas urutan: auth & gateway jalan terlebih dahulu, web terakhir
+  const priorityOrder = ['auth', 'gateway', 'employee', 'payroll', 'attendance', 'leave', 'shift', 'social', 'ws', 'web'];
+  uniqueKeys.sort((a, b) => {
+    const ai = priorityOrder.indexOf(a);
+    const bi = priorityOrder.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
 
   console.log(`${BOLD}====================================================${RESET_COLOR}`);
   console.log(`${BOLD} Menjalankan ${uniqueKeys.length} Service (Lightweight Mode)${RESET_COLOR}`);
@@ -188,49 +254,13 @@ function startServices(selectedKeys) {
   }
   console.log(`${BOLD}====================================================${RESET_COLOR}\n`);
 
-  for (const key of uniqueKeys) {
-    const s = SERVICES[key];
-    const prefix = `${s.color}[${s.name}]${RESET_COLOR} `;
-
-    // Eksekusi via pnpm dengan batas memori V8 yang ketat
-    const child = spawn('pnpm', ['--filter', s.filter, 'dev'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: true, // Untuk kemudahan terminate process tree
-      env: {
-        ...process.env,
-        NODE_OPTIONS: `--max-old-space-size=${s.maxMemory}`,
-      },
-    });
-
-    childProcesses.push(child);
-
-    const pipeOutput = (stream, isError = false) => {
-      let buffer = '';
-      stream.on('data', (chunk) => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // Sisa potongan line
-        for (const line of lines) {
-          if (line.trim().length > 0) {
-            const outStream = isError ? process.stderr : process.stdout;
-            outStream.write(`${prefix}${line}\n`);
-          }
-        }
-      });
-    };
-
-    pipeOutput(child.stdout, false);
-    pipeOutput(child.stderr, true);
-
-    child.on('error', (err) => {
-      console.error(`${prefix}\x1b[31mError: ${err.message}${RESET_COLOR}`);
-    });
-
-    child.on('close', (code) => {
-      if (code !== 0 && code !== null) {
-        console.log(`${prefix}\x1b[31mBerhenti dengan exit code ${code}${RESET_COLOR}`);
-      }
-    });
+  for (let i = 0; i < uniqueKeys.length; i++) {
+    const key = uniqueKeys[i];
+    spawnSingleService(key);
+    // Beri jeda 150ms agar proses tidak berebut I/O CPU pada milidetik yang sama
+    if (i < uniqueKeys.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
   }
 }
 

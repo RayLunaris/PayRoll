@@ -74,14 +74,32 @@ export async function POST(request: NextRequest) {
     return res
   }
 
-  const body = payload as { data?: { accessToken?: string; refreshToken?: string } }
+  const body = payload as {
+    data?: {
+      accessToken?: string
+      refreshToken?: string
+      user?: {
+        id: string
+        email: string
+        role: string
+        employeeId?: string
+        isActive: boolean
+        lastLogin?: string | null
+        createdAt?: string | null
+        updatedAt?: string | null
+      }
+    }
+  }
   const accessToken: string | undefined = body?.data?.accessToken
   const newRefreshToken: string | undefined = body?.data?.refreshToken
   if (!accessToken || !newRefreshToken) {
     return NextResponse.json({ success: false, error: 'Invalid refresh response' }, { status: 502 })
   }
 
-  const res = NextResponse.json({ success: true, data: { accessToken, refreshToken: newRefreshToken } })
+  const res = NextResponse.json({
+    success: true,
+    data: { accessToken, refreshToken: newRefreshToken, user: body.data?.user },
+  })
   res.cookies.set(REFRESH_TOKEN_COOKIE, newRefreshToken, { ...cookieOptions(request), maxAge: 7 * 24 * 3600 })
   return res
 }

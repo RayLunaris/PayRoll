@@ -123,7 +123,7 @@ export default function AttendanceReportPage() {
     );
   };
 
-  const departmentOptions = departments.map((d) => d.name);
+  const departmentOptions = Array.from(new Set(departments.map((d) => d.name)));
 
   return (
     <div>

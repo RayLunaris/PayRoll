@@ -356,7 +356,20 @@ export async function authRoutes(app: FastifyInstance) {
 
       return reply.send({
         success: true,
-        data: { accessToken, refreshToken: newRefreshToken },
+        data: {
+          accessToken,
+          refreshToken: newRefreshToken,
+          user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            employeeId: employeeId || undefined,
+            isActive: user.isActive,
+            lastLogin: user.lastLogin,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+          },
+        },
       });
     } catch (error) {
       return reply.status(401).send({ success: false, error: 'Invalid refresh token' });
